@@ -407,6 +407,40 @@ export const stylePresetSeeds = [
     prompt: 'black and white manga illustration, high-contrast monochrome ink work, dynamic hatching and cross-hatching shading, bold solid blacks with dramatic negative space, screentone gray gradation, expressive confident ink linework, cinematic noir lighting, professional manga page quality, consistent character design across shots, strictly no color, avoid grayscale blur smudging, avoid painterly soft edges, avoid photorealism, avoid 3D render look',
     description: '黑白漫/ Noir 高对比墨水风',
   },
+  // ─── 写实类（value 以 live- 开头）──────────────────────────────
+  // 平台对真人影像有审核：定妆图/场景图为纯文生图可过审；故事板关键帧（图生图）作视频参考若被拒，
+  // 生成任务会自动去掉故事板参考、只用设定图重提（generation.ts fallbackWithoutBoardReference）。
+  // 提示词均声明虚构人物、不像任何真实存在的人。
+  {
+    name: '现代都市剧', value: 'live-tv', sortOrder: 20,
+    prompt: 'contemporary Chinese TV drama live-action still, modern urban series production look, fictional characters who do not resemble any real person, natural believable faces with realistic skin texture, clean soft three-point lighting with gentle fill, bright balanced exposure, crisp natural color grading with true skin tones, modern interiors and city exteriors with realistic set dressing, eye-level medium framing, sharp focus, broadcast drama quality, consistent character appearance across shots, avoid anime or cartoon look, avoid 3D render look, avoid illustration, avoid heavy beauty filter, avoid plastic waxy skin, avoid celebrity likeness',
+    description: '国产现代都市剧质感：干净明亮的布光与自然肤色',
+  },
+  {
+    name: '古装历史剧', value: 'live-costume', sortOrder: 21,
+    prompt: 'Chinese historical costume drama live-action still, serious period production design with authentic traditional costumes, hairstyles, architecture and props, fictional characters who do not resemble any real person, soft natural window light and warm candlelight, rich but restrained earthy and jewel-tone palette, elegant balanced composition, detailed silk, wood and stone textures, cinematic depth of field, realistic skin texture, consistent character appearance across shots, avoid fantasy glow and xianxia effects, avoid modern objects, avoid anime or cartoon look, avoid 3D render look, avoid plastic waxy skin, avoid celebrity likeness',
+    description: '历史正剧质感：考究服化道、自然光与厚重色调（非仙侠）',
+  },
+  {
+    name: '院线电影感', value: 'live-cinema', sortOrder: 22,
+    prompt: 'theatrical feature film live-action still, anamorphic widescreen cinematography, fictional characters who do not resemble any real person, motivated cinematic lighting with strong contrast and soft rim light, shallow depth of field with natural bokeh, rich filmic color grading, subtle film grain, 35mm lens perspective, production-quality sets and costumes, realistic skin texture, consistent character appearance across shots, avoid flat TV lighting, avoid over-saturated colors, avoid anime or cartoon look, avoid 3D render look, avoid illustration, avoid plastic waxy skin, avoid celebrity likeness',
+    description: '院线大片质感：宽银幕构图、浅景深与电影级调色',
+  },
+  {
+    name: '胶片文艺片', value: 'live-film', sortOrder: 23,
+    prompt: 'arthouse film still shot on 35mm film stock, visible natural film grain, muted desaturated palette with soft halation, natural available light, quiet observational composition with generous negative space, fictional characters who do not resemble any real person, realistic textures and skin with imperfections, slightly lifted faded shadows, poetic restrained mood, consistent character appearance across shots, avoid glossy commercial look, avoid HDR, avoid digital sharpening, avoid anime or cartoon look, avoid 3D render look, avoid beauty filter, avoid celebrity likeness',
+    description: '35mm 胶片文艺片：颗粒感、低饱和与自然光',
+  },
+  {
+    name: '纪录片纪实', value: 'live-doc', sortOrder: 24,
+    prompt: 'documentary realism live-action still, observational handheld camera feel, available natural light only, true-to-life unstylized color, real-world locations with authentic wear and everyday clutter, candid unposed moments, fictional subjects who do not resemble any real person, natural skin with imperfections, informational eye-level framing, slight motion softness allowed, consistent subject appearance across shots, avoid staged glamour lighting, avoid stylized cinematic color grading, avoid anime or cartoon look, avoid 3D render look, avoid illustration, avoid celebrity likeness',
+    description: '纪录片纪实：手持观察视角、自然光与不美化的真实环境',
+  },
+  {
+    name: '年代战争纪实', value: 'live-war', sortOrder: 25,
+    prompt: 'period war film live-action still, gritty historical realism, authentic 1930s-1940s uniforms, weapons, gear and terrain, fictional soldiers and characters who do not resemble any real person, overcast diffused light, desaturated cold palette with earthy browns and greys, mud, rain, smoke and dust textures, worn weathered faces and fabrics, handheld documentary immediacy combined with cinematic composition, subtle film grain, consistent character appearance across shots, avoid glorified heroic glow, avoid modern equipment, avoid gore, avoid anime or cartoon look, avoid 3D render look, avoid illustration, avoid celebrity likeness',
+    description: '年代战争纪实：低饱和冷色、硝烟泥泞与历史质感',
+  },
 ]
 
 /**

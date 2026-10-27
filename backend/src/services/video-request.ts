@@ -50,14 +50,15 @@ export interface StoryboardVideoInput {
 }
 
 /** 组装分镜的视频提示词与参考图；rawPrompt 为空时取分镜已保存的 video_prompt */
-export async function buildStoryboardVideoInput(storyboardId: number, opts: { provider?: string | null; rawPrompt?: string | null }): Promise<StoryboardVideoInput | null> {
+export async function buildStoryboardVideoInput(storyboardId: number, opts: { provider?: string | null; rawPrompt?: string | null; disableBoard?: boolean }): Promise<StoryboardVideoInput | null> {
   const bindings = await loadStoryboardBindings(storyboardId)
   if (!bindings) return null
   const sb = bindings.storyboard
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
   const board = parseBoard(sb.board)
   const clean = (await cleanImagesByStoryboard([sb])).get(sb.id)
-  const boardState = boardReferenceState(sb, ep?.boardReference !== false, clean)
+  // disableBoard：真人审核兜底重提时强制不挂故事板参考
+  const boardState = boardReferenceState(sb, ep?.boardReference !== false && !opts.disableBoard, clean)
 
   const limit = (opts.provider || '').toLowerCase() === 'aliyun' ? 10 : 9
   const useBoard = boardState === 'used' && !!clean && !!board

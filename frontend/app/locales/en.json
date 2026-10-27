@@ -143,7 +143,9 @@
       "aspectRatio": "Aspect ratio",
       "aspectRatioPlaceholder": "Select aspect ratio",
       "aspectRatioHint": "Fixed after creation; all videos will use this ratio",
-      "submit": "Create project"
+      "submit": "Create project",
+      "liveTag": "Live-action",
+      "liveHint": "Live-action style: character and scene reference images are pure text-to-image and work normally. The platform reviews real-person imagery; if the storyboard keyframe is rejected as a video reference, the video is automatically regenerated using only the reference images."
     },
     "deleteDialog": {
       "title": "Delete project",

@@ -143,7 +143,9 @@
       "aspectRatio": "画面比例",
       "aspectRatioPlaceholder": "选择画面比例",
       "aspectRatioHint": "创建后固定，视频生成将统一使用该比例",
-      "submit": "创建项目"
+      "submit": "创建项目",
+      "liveTag": "真人写实",
+      "liveHint": "写实风格：角色定妆图与场景图为纯文生图，可正常使用；平台对真人影像有审核，若故事板关键帧作为视频参考被拒，系统会自动改为只用设定图参考重新生成。"
     },
     "deleteDialog": {
       "title": "删除项目",

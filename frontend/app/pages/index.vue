@@ -167,6 +167,7 @@
               <span class="field-label">{{ t('index.createDialog.style') }}</span>
               <BaseSelect v-model="form.style" :options="styleSelectOptions" :placeholder="t('index.createDialog.stylePlaceholder')" searchable />
               <span v-if="selectedStyleDesc" class="field-hint">{{ selectedStyleDesc }}</span>
+              <span v-if="isLiveStyle(form.style)" class="field-hint live-style-hint">{{ t('index.createDialog.liveHint') }}</span>
             </label>
             <label class="field">
               <span class="field-label">{{ t('index.createDialog.aspectRatio') }}</span>
@@ -223,7 +224,12 @@ const dramaToDelete = ref(null)
 const deletingDrama = ref(false)
 const form = ref({ title: '', style: '', aspect_ratio: '16:9' })
 const stylePresets = ref([])
-const styleSelectOptions = computed(() => stylePresets.value.map(p => ({ label: p.name, value: p.value })))
+// 写实类预设（value 以 live- 开头）在下拉中标注，选中时提示平台真人审核的影响
+const isLiveStyle = (value) => String(value || '').startsWith('live-')
+const styleSelectOptions = computed(() => stylePresets.value.map(p => ({
+  label: isLiveStyle(p.value) ? `${p.name} · ${t('index.createDialog.liveTag')}` : p.name,
+  value: p.value,
+})))
 const selectedStyleDesc = computed(() => stylePresets.value.find(p => p.value === form.value.style)?.description || '')
 // 常量数组 label 渲染时求值（语言切换即时生效），value 为逻辑值
 const aspectRatioOptions = computed(() => ([

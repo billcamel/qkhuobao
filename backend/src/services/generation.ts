@@ -72,6 +72,10 @@ interface GenerateVideoParams {
   watermark?: boolean
   configId?: number
   forceNew?: boolean
+  /** 本次是否挂了故事板关键帧参考（真人审核被拒时据此自动降级重提） */
+  boardReference?: boolean
+  /** 自动降级重提时记录原任务 ID，避免循环重提 */
+  boardFallbackFrom?: number
 }
 
 export async function generateImage(params: GenerateImageParams): Promise<number> {
@@ -153,6 +157,8 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
       seed: params.seed,
       promptExtend: params.promptExtend,
       watermark: params.watermark,
+      boardReference: params.boardReference ? 1 : undefined,
+      boardFallbackFrom: params.boardFallbackFrom,
     })
 
     logTaskStart('VideoTask', 'enqueue', {
@@ -373,6 +379,47 @@ async function failTask(id: number, message: string, code?: string) {
   await db.update(schema.sysTask)
     .set({ status: 'failed', errorMsg: safeTaskError(message), ...(code ? { errorCode: code } : {}), updatedAt: now() })
     .where(eq(schema.sysTask.id, id))
+  if (PRIVACY_REJECTION_RE.test(message)) await fallbackWithoutBoardReference(id)
+}
+
+/**
+ * 写实风格下，故事板关键帧（以定妆图为参考的图生图产物）作视频参考图可能触发 Ark 真人隐私审核
+ * （InputImageSensitiveContentDetected.PrivacyInformation，见 docs/local-setup-notes.md）。
+ * 此时自动去掉故事板参考、只用设定图（纯文生图，可过审）重新提交一次。
+ */
+export const PRIVACY_REJECTION_RE = /InputImageSensitiveContentDetected|PrivacyInformation/i
+
+async function fallbackWithoutBoardReference(id: number) {
+  try {
+    const [record] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
+    const params = parseTaskParams(record?.params)
+    if (!record || record.type !== 'video' || !record.storyboardId || !params.boardReference || params.boardFallbackFrom) return
+    const { buildStoryboardVideoInput, applyVideoStylePrefix } = await import('./video-request.js')
+    const input = await buildStoryboardVideoInput(record.storyboardId, { provider: record.provider, disableBoard: true })
+    if (!input) return
+    const retryId = await generateVideo({
+      storyboardId: record.storyboardId,
+      dramaId: record.dramaId ?? undefined,
+      prompt: await applyVideoStylePrefix(input.prompt, record.dramaId),
+      model: record.model ?? undefined,
+      referenceMode: 'reference',
+      referenceImageUrls: input.references.map(r => r.imageUrl),
+      generateAudio: params.generateAudio !== 0,
+      duration: input.duration ?? params.duration,
+      aspectRatio: params.aspectRatio,
+      resolution: params.resolution,
+      configId: record.configId ?? undefined,
+      forceNew: true,
+      boardFallbackFrom: id,
+    })
+    // 文案避开「审核/真人」等字样：前端会把这类词统一映射成笼统的审核提示
+    await db.update(schema.sysTask)
+      .set({ errorMsg: `故事板参考图被拒，已自动改用设定图参考重新生成（任务 #${retryId}）`, errorCode: 'board_reference_fallback', updatedAt: now() })
+      .where(eq(schema.sysTask.id, id))
+    logTaskWarn('VideoTask', 'board-reference-fallback', { id, retryId, storyboardId: record.storyboardId })
+  } catch (err) {
+    logTaskWarn('VideoTask', 'board-reference-fallback-failed', { id, error: safeTaskError(err) })
+  }
 }
 
 type SysTaskRecord = typeof schema.sysTask.$inferSelect

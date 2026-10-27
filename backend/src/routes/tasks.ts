@@ -177,6 +177,7 @@ app.post('/', async (c) => {
         videoBody.prompt = input.prompt
         // 有故事板时以故事板时间轴为准，避免提示词按秒分段与视频时长错位
         if (input.duration) videoBody.duration = input.duration
+        videoBody.board_reference_used = input.boardState === 'used'
       }
       const validationError = validateVideoRequest(videoBody, effectiveConfig?.provider)
       if (validationError) return badRequest(c, validationError)
@@ -231,6 +232,7 @@ app.post('/', async (c) => {
         promptExtend: videoBody!.prompt_extend,
         watermark: videoBody!.watermark,
         configId,
+        boardReference: videoBody!.board_reference_used === true,
       })
 
     const [record] = await db.select().from(schema.sysTask)
