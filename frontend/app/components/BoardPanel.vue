@@ -90,7 +90,8 @@
           <div class="board-seg-body">
             <div class="board-image-col">
               <button v-if="sb.imageUrl" type="button" class="board-image" @click="emit('preview', mediaSrc(sb.imageUrl), `${group.no} · ${t('episode.board.segment', { n: sb.part })}`)">
-                <img :src="thumbOf(mediaSrc(sb.imageUrl))" :alt="sb.title || ''" loading="lazy" @error="thumbFallback($event, mediaSrc(sb.imageUrl))">
+                <!-- 故事板是满是小字的制作文档，400px 缩略图放大后看不清，直接用原图（懒加载） -->
+                <img :src="mediaSrc(sb.imageUrl)" :alt="sb.title || ''" loading="lazy" decoding="async">
               </button>
               <div v-else class="board-image board-image-empty">
                 <LayoutPanelTop :size="22" :stroke-width="1.4" />
@@ -192,7 +193,7 @@
         <div class="dialog-body board-version-grid">
           <div v-if="versionDialog.loading"><Loader2 :size="14" class="animate-spin" /></div>
           <div v-for="v in versionDialog.items" :key="v.id" :class="['board-version', { on: v.id === versionDialog.sb?.versionId }]">
-            <img v-if="v.image_url" :src="thumbOf(mediaSrc(v.image_url))" alt="" @error="thumbFallback($event, mediaSrc(v.image_url))">
+            <img v-if="v.image_url" :src="mediaSrc(v.image_url)" alt="" loading="lazy" decoding="async">
             <div v-else class="board-image-empty">{{ v.status === 'failed' ? t('episode.board.imageFailed') : t('episode.board.imaging') }}</div>
             <div class="board-version-foot">
               <span class="mono">{{ t('episode.board.versionN', { n: v.version }) }}</span>
@@ -212,7 +213,6 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import { episodeAPI, storyboardAPI } from '~/composables/useApi'
 import { toastError } from '~/composables/useToast'
-import { thumbOf, thumbFallback } from '~/composables/useMedia'
 
 const props = defineProps({
   episodeId: { type: Number, required: true },
