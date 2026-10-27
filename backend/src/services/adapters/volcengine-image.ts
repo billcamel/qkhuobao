@@ -48,10 +48,8 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
 
     // 参考图（Seedream 4.0+ 多图参考）：generation 已归一化为 data URL，官方 image 字段直接接受
     const refs = parseReferenceImages(record.referenceImages)
-    if (refs.length) {
-      body.image = refs.length === 1 ? refs[0] : refs
-      body.sequential_image_generation = 'disabled'
-    }
+    // 不传 sequential_image_generation：默认即单图，且部分模型（如 seedream-5-0-flash）不接受该参数
+    if (refs.length) body.image = refs.length === 1 ? refs[0] : refs
     body.watermark = false
 
     return {
