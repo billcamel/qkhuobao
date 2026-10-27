@@ -21,6 +21,33 @@ git fetch upstream && git merge upstream/master
 `~/.ssh/config` 里已把 `github.com` 指向 `ssh.github.com:443`，密钥为 `~/.ssh/id_ed25519_github`。
 `api.github.com` 也通，所以 `gh` 的 API 类操作可用，但 `gh` 的 git 操作仍走上面的 SSH 通道。
 
+### 代理（备用通道，已配好）
+
+内网 HTTP 代理，两个都通，端口都是 7890：
+
+| 地址 | 实测到 github.com |
+|---|---|
+| 192.168.100.240:7890 | 0.64s（默认用这个） |
+| 192.168.100.166:7890 | 0.77s |
+
+git 已按 host 配好（只对 github.com 生效，不影响别的站）：
+
+```bash
+git config --global --get-regexp proxy
+# http.https://github.com/.proxy  http://192.168.100.240:7890
+# https.https://github.com/.proxy http://192.168.100.240:7890
+```
+
+需要时临时给别的工具挂代理（gh / pip / curl）：
+
+```bash
+export HTTPS_PROXY=http://192.168.100.240:7890 HTTP_PROXY=http://192.168.100.240:7890
+```
+
+刻意**没有**写进 `~/.bashrc`：代理一旦不在线，全局 export 会把所有外网访问一起拖死。按需临时挂更安全。
+两条通道（SSH-443、HTTPS-代理）现在都验证可用，其一挂掉就换另一条。
+
+
 ## 本地补丁清单（与上游的差异）
 
 1. **`backend/src/services/adapters/volcengine-image.ts`** — 补上参考图传递。
