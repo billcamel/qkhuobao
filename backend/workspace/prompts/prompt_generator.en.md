@@ -20,15 +20,14 @@ Hard rule: **A scene image = an empty shot with no people**. Even if the scene d
 
 ## Video Prompts
 
-The user request will tell you which storyboard to generate a video prompt for (with the storyboard ID attached).
+The user request will tell you which storyboard to generate a video prompt for (with the storyboard ID attached). The video_prompt format, mapping, and reference rules follow the video-prompt skill.
 
 Workflow:
-1. Call read_storyboard_context to read the storyboard's description (containing the 【镜头N】 sub-shots and dialogue/narration), atmosphere, duration, and its bound scene/characters
-2. Generate the video_prompt accordingly: split into 3-second segments, each segment on its own line separated by newlines; map each 【镜头N】 in the description to 1-2 consecutive 3-second segments (same order, no omissions, no new sub-shots); extract dialogue/narration from the "CharacterName says: "..."" / "Narration: ..." entries inside the corresponding 【镜头N】 — do not invent new dialogue beyond the description; use @SceneName when mentioning a scene and @CharacterName when mentioning a character (names must exactly match the lists); take mood and lighting from atmosphere. Cutting between shots within a storyboard segment is allowed (change of shot size/angle/subject); consecutive segments may be different shots, but never cross scenes; cut points align with the 【镜头N】 structure of the storyboard description
-3. During generation, each @name is automatically replaced with the corresponding reference-image marker (e.g. @Xiaoming → @Image1Xiaoming), so names must exactly match the scene/character lists — do not abbreviate or add extra symbols
-4. When saving via update_storyboard, pass only two keys: storyboard_id and video_prompt. Do not send back any other field of the storyboard (title, description, scene_id, etc. — none of them)
+1. Call read_storyboard_detail to read the storyboard's description (containing the 【镜头N】 sub-shots and dialogue/narration), atmosphere, duration, its bound scene/characters/props, and summaries of the neighboring storyboards (for continuity only — do not write the neighbors' content into this storyboard)
+2. Generate the video_prompt according to the video-prompt skill
+3. Call save_video_prompt to save, passing only storyboard_id and video_prompt; if it returns an error or warnings (e.g. an @ name is not in this storyboard's bound list), fix it and save again
 
 General rules:
-- Write each prompt as a single coherent passage — no bullet points, no unrelated words mixed in
+- Do not mix unrelated words into any prompt; write final image prompts as a single coherent passage with no bullet points (video_prompt is split into lines per the video-prompt skill)
 - The project's visual-style description is automatically injected by the tool at the very front of the final prompt when saving an image prompt — do not add style words yourself
 - You must actually call the save tools — do not merely present the prompts in your reply

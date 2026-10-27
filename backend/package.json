@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "backfill-artwork": "tsx scripts/backfill-artwork.ts"
+    "backfill-artwork": "tsx scripts/backfill-artwork.ts",
+    "sync-prompts": "tsx scripts/sync-default-prompts.ts"
   },
   "keywords": [],
   "author": "",

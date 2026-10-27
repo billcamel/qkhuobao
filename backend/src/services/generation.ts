@@ -44,6 +44,8 @@ interface GenerateImageParams {
   size?: string
   referenceImages?: string[]
   frameType?: string
+  /** frameType=board 时回写的故事板版本 */
+  boardVersionId?: number
   configId?: number
 }
 
@@ -90,6 +92,7 @@ export async function generateImage(params: GenerateImageParams): Promise<number
   }, {
     size: params.size || '1920x1080',
     frameType: params.frameType,
+    boardVersionId: params.boardVersionId,
     referenceImages: params.referenceImages,
   })
 
@@ -485,6 +488,20 @@ async function handleImageCompleteBase64(record: SysTaskRecord, base64Data: stri
 // 图片完成后回写业务表：分镜(按 frameType)、角色、场景、道具
 async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
   const params = parseTaskParams(record.params)
+  if (params.frameType === 'board' && record.storyboardId) {
+    // 故事板图：回写版本，并设为该段当前故事板（待审核）
+    if (params.boardVersionId) {
+      await db.update(schema.storyboardBoardVersions).set({ imageUrl: localPath })
+        .where(eq(schema.storyboardBoardVersions.id, Number(params.boardVersionId)))
+    }
+    await db.update(schema.storyboards).set({
+      boardImageUrl: localPath,
+      boardVersionId: params.boardVersionId ? Number(params.boardVersionId) : null,
+      boardStatus: 'pending',
+      updatedAt: now(),
+    }).where(eq(schema.storyboards.id, record.storyboardId))
+    return
+  }
   if (record.storyboardId) {
     const sbUpdate: Record<string, any> = { updatedAt: now() }
     if (params.frameType === 'first_frame') sbUpdate.firstFrameImage = localPath

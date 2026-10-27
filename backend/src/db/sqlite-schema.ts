@@ -40,6 +40,7 @@ export const sqliteSchemaStatements = [
     image_config_id INTEGER,
     video_config_id INTEGER,
     resolution TEXT DEFAULT '720p',
+    board_reference INTEGER DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
@@ -110,6 +111,11 @@ export const sqliteSchemaStatements = [
     subtitle_url TEXT,
     composed_video_url TEXT,
     status TEXT DEFAULT 'pending',
+    script_scene TEXT,
+    board TEXT,
+    board_status TEXT,
+    board_image_url TEXT,
+    board_version_id INTEGER,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
@@ -288,6 +294,62 @@ export const sqliteSchemaStatements = [
     deleted_at TEXT
   )`,
 
+  // 分镜快照：整集重新拆分前自动留存（JSON：分镜行 + 角色/道具关联）
+  `CREATE TABLE IF NOT EXISTS storyboard_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episode_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    storyboard_count INTEGER NOT NULL DEFAULT 0,
+    video_count INTEGER NOT NULL DEFAULT 0,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_storyboard_snapshots_episode ON storyboard_snapshots (episode_id)`,
+
+  `CREATE TABLE IF NOT EXISTS episode_script_scenes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episode_id INTEGER NOT NULL,
+    scene_no TEXT NOT NULL,
+    heading TEXT NOT NULL,
+    summary TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_episode_script_scenes_episode ON episode_script_scenes (episode_id)`,
+
+  `CREATE TABLE IF NOT EXISTS storyboard_board_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    storyboard_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    task_id INTEGER,
+    image_url TEXT,
+    prompt TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_storyboard_board_versions_sb ON storyboard_board_versions (storyboard_id)`,
+
+  // 文本 Agent 异步任务（改写/提取/拆分/视频提示词）
+  `CREATE TABLE IF NOT EXISTS agent_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    agent_type TEXT NOT NULL,
+    target TEXT,
+    drama_id INTEGER NOT NULL,
+    episode_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    current_ref TEXT,
+    result TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_agent_tasks_episode ON agent_tasks (episode_id, kind)`,
+
   // 应用级全局设置（key-value，如 AI 内容语言 content_language）
   `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
@@ -374,6 +436,13 @@ const UPGRADE_SQL = 'UPDATE style_presets SET "name" = ?, "prompt" = ?, "descrip
 // 内容寻址下架：命中下架种子原文才删除
 const REMOVE_SQL = 'DELETE FROM style_presets WHERE "value" = ? AND "prompt" = ?'
 
+function addMissingColumns(sqlite: Database.Database, table: string, columns: Record<string, string>) {
+  const existing = new Set((sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(c => c.name))
+  for (const [name, type] of Object.entries(columns)) {
+    if (!existing.has(name)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`)
+  }
+}
+
 export function initSqliteSchema(sqlite: Database.Database) {
   for (const statement of sqliteSchemaStatements) {
     sqlite.exec(statement)
@@ -383,6 +452,11 @@ export function initSqliteSchema(sqlite: Database.Database) {
   for (const [name, type] of Object.entries({ config_id: 'INTEGER', config_base_url: 'TEXT', stage: 'TEXT', error_code: 'TEXT' })) {
     if (!taskColumns.has(name)) sqlite.exec(`ALTER TABLE sys_task ADD COLUMN ${name} ${type}`)
   }
+  // 故事板字段：已安装库补列（新库由 CREATE TABLE 直接建好）
+  addMissingColumns(sqlite, 'storyboards', {
+    script_scene: 'TEXT', board: 'TEXT', board_status: 'TEXT', board_image_url: 'TEXT', board_version_id: 'INTEGER',
+  })
+  addMissingColumns(sqlite, 'episodes', { board_reference: 'INTEGER DEFAULT 1' })
   const insertSeed = sqlite.prepare(SEED_SQL)
   const upgradeSeed = sqlite.prepare(UPGRADE_SQL)
   const removeSeed = sqlite.prepare(REMOVE_SQL)

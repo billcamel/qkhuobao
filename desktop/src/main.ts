@@ -17,6 +17,7 @@ import * as path from 'path'
 import { registerMigrationIpc } from './migrate'
 import { registerUpdater, markQuitting } from './updater'
 import { createStartupLog, redactStartupLog, waitForBackend } from './startup'
+import { syncWorkspaceTemplate } from './template-sync'
 
 // 主进程打 CJS 产物，__dirname 天然可用（import.meta.url 在 CJS 下为 undefined）
 declare const __dirname: string
@@ -27,7 +28,7 @@ const REPO_ROOT = path.resolve(DESKTOP_ROOT, '..')
 const BACKEND_BUNDLE = path.join(DESKTOP_ROOT, 'build', 'backend.mjs')
 
 /** workspace 模板版本：内置模板更新时递增，触发向用户目录补缺失文件 */
-const TEMPLATE_VERSION = '4'
+const TEMPLATE_VERSION = '5'
 const STORAGE_CONFIG_FILE = 'storage-config.json'
 
 let mainWindow: BrowserWindow | null = null
@@ -154,21 +155,6 @@ export function normCase(p: string): string {
 }
 
 // ---- workspace 模板 ----
-
-/**
- * workspace 模板拷贝（copy-once + 版本标记）：
- * - 目标无版本标记（首启动）或版本较旧 → 只补缺失文件，永不覆盖用户编辑
- * - 版本一致 → 跳过
- * 例外：prompts/ 随版本升级强制覆盖——prompt 与代码内 DEFAULT_PROMPTS 同源迭代
- * （设置页有「恢复默认」，且编辑场景少）；skills/ 保持只增不覆盖（可能有用户新建）
- */
-function syncWorkspaceTemplate(templateDir: string, destDir: string) {
-  const marker = path.join(destDir, '.template-version')
-  if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === TEMPLATE_VERSION) return
-  fs.cpSync(templateDir, destDir, { recursive: true, force: false, errorOnExist: false })
-  fs.cpSync(path.join(templateDir, 'prompts'), path.join(destDir, 'prompts'), { recursive: true, force: true })
-  fs.writeFileSync(marker, TEMPLATE_VERSION)
-}
 
 function resolveResourceDir(): string {
   // 打包后在 resources/（extraResources）；dev 直指仓库目录
@@ -304,7 +290,10 @@ async function bootstrap() {
       ? path.join(userData, 'workspace')
       : templateDir
     startupLog.write('preparing workspace')
-    if (app.isPackaged) syncWorkspaceTemplate(templateDir, currentWorkspaceDir)
+    if (app.isPackaged) {
+      const upgraded = syncWorkspaceTemplate(templateDir, currentWorkspaceDir, TEMPLATE_VERSION)
+      if (upgraded.length) startupLog.write(`upgraded ${upgraded.length} unmodified skill files`)
+    }
 
     currentFrontendDist = app.isPackaged
       ? path.join(resources, 'frontend')

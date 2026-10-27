@@ -6,6 +6,11 @@ import { toSnakeCaseArray, toSnakeCase } from '../utils/transform.js'
 import { getActiveConfigId } from '../services/ai.js'
 import { EXTRACT_TARGETS, getExtractionStatus, startExtraction, type ExtractTarget } from '../services/extraction.js'
 import { getVideoPromptBatchStatus, startVideoPromptBatch } from '../services/video-prompts.js'
+import { startBreakdown, startRewrite } from '../services/episode-agents.js'
+import { latestAgentTask, runningAgentTasks, serializeAgentTask } from '../services/agent-tasks.js'
+import { listStoryboardSnapshots, restoreStoryboardSnapshot } from '../services/storyboard-snapshots.js'
+import { listScriptScenes } from '../services/board-store.js'
+import { generateBoardImage } from '../services/board-image.js'
 
 const app = new Hono()
 
@@ -56,7 +61,7 @@ app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
 
-  const allowed = ['content', 'script_content', 'title', 'description', 'status', 'resolution']
+  const allowed = ['content', 'script_content', 'title', 'description', 'status', 'resolution', 'board_reference']
   const updates: Record<string, any> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
@@ -74,6 +79,7 @@ app.put('/:id', async (c) => {
   if ('description' in updates) drizzleUpdates.description = updates.description
   if ('status' in updates) drizzleUpdates.status = updates.status
   if ('resolution' in updates) drizzleUpdates.resolution = updates.resolution
+  if ('board_reference' in updates) drizzleUpdates.boardReference = !!updates.board_reference
 
   await db.update(schema.episodes).set(drizzleUpdates).where(eq(schema.episodes.id, id))
   return success(c)
@@ -133,14 +139,14 @@ app.post('/:id/extract', async (c) => {
   if (!EXTRACT_TARGETS.includes(target)) return badRequest(c, 'target 必须是 characters / scenes / props')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, id))
   if (!ep) return notFound(c, '剧集不存在')
-  const started = startExtraction(ep.id, ep.dramaId, target, { model: body.model || undefined, configId: body.config_id ?? undefined })
+  const started = await startExtraction(ep.id, ep.dramaId, target, { model: body.model || undefined, configId: body.config_id ?? undefined })
   return success(c, { target, status: 'running', already_running: !started })
 })
 
 // GET /episodes/:id/extract-status — 查询三类资产提取任务状态
 app.get('/:id/extract-status', async (c) => {
   const id = Number(c.req.param('id'))
-  return success(c, getExtractionStatus(id))
+  return success(c, await getExtractionStatus(id))
 })
 
 // POST /episodes/:id/generate-video-prompts — 异步批量为缺少视频提示词的分镜生成（立即返回，前端轮询状态）
@@ -161,7 +167,94 @@ app.post('/:id/generate-video-prompts', async (c) => {
 // GET /episodes/:id/video-prompts-status — 查询批量视频提示词任务状态
 app.get('/:id/video-prompts-status', async (c) => {
   const id = Number(c.req.param('id'))
-  return success(c, getVideoPromptBatchStatus(id))
+  return success(c, await getVideoPromptBatchStatus(id))
+})
+
+// POST /episodes/:id/rewrite — 异步剧本改写（立即返回任务，前端轮询 /agent/tasks/:id）
+app.post('/:id/rewrite', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, id))
+  if (!ep) return notFound(c, '剧集不存在')
+  if (!(ep.content || ep.scriptContent || '').trim()) return badRequest(c, '请先填写本集原始内容')
+  const { started, task } = await startRewrite(ep, { model: body.model || undefined, configId: body.config_id ?? undefined })
+  return success(c, { already_running: !started, task: serializeAgentTask(task) })
+})
+
+// POST /episodes/:id/breakdown — 异步分镜拆解（含校验与缺失视频提示词补齐）
+app.post('/:id/breakdown', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, id))
+  if (!ep) return notFound(c, '剧集不存在')
+  if (!(ep.scriptContent || ep.content || '').trim()) return badRequest(c, '请先完成剧本')
+  const { started, task } = await startBreakdown(ep, {
+    model: body.model || undefined,
+    configId: body.config_id ?? undefined,
+    videoLabel: typeof body.video_model_label === 'string' && body.video_model_label.trim() ? body.video_model_label.trim() : undefined,
+  })
+  return success(c, { already_running: !started, task: serializeAgentTask(task) })
+})
+
+// GET /episodes/:id/agent-tasks — 运行中的 Agent 任务 + 改写/拆分最近一次结果（页面刷新后恢复进度）
+app.get('/:id/agent-tasks', async (c) => {
+  const id = Number(c.req.param('id'))
+  return success(c, {
+    running: (await runningAgentTasks(id)).map(serializeAgentTask),
+    latest: {
+      rewrite: serializeAgentTask(await latestAgentTask(id, 'rewrite')),
+      breakdown: serializeAgentTask(await latestAgentTask(id, 'breakdown')),
+    },
+  })
+})
+
+// GET /episodes/:id/script-scenes — 故事板的剧本场景分组（场景号、场景头、场景目的）
+app.get('/:id/script-scenes', async (c) => {
+  const id = Number(c.req.param('id'))
+  return success(c, (await listScriptScenes(id)).map(toSnakeCase))
+})
+
+// POST /episodes/:id/board-images — 批量故事板出图（body.storyboard_ids 指定；缺省为有故事板但还没出图的段）
+app.post('/:id/board-images', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const ids: number[] | undefined = Array.isArray(body.storyboard_ids) ? body.storyboard_ids.map(Number).filter(Boolean) : undefined
+  const rows = (await db.select().from(schema.storyboards).where(eq(schema.storyboards.episodeId, id)))
+    .sort((a, b) => a.storyboardNumber - b.storyboardNumber)
+    .filter(sb => sb.board && (ids ? ids.includes(sb.id) : !sb.boardImageUrl))
+  const started: { storyboard_id: number; version_id: number; task_id: number }[] = []
+  const failed: { storyboard_id: number; error: string }[] = []
+  for (const sb of rows) {
+    try {
+      const r = await generateBoardImage(sb.id, { configId: body.config_id ?? undefined, model: body.model || undefined })
+      started.push({ storyboard_id: sb.id, version_id: r.versionId, task_id: r.taskId })
+    } catch (err: any) {
+      failed.push({ storyboard_id: sb.id, error: err?.message || '出图失败' })
+    }
+  }
+  return success(c, { started, failed })
+})
+
+// GET /episodes/:id/storyboard-snapshots — 分镜历史快照（重新拆分/恢复前自动留存）
+app.get('/:id/storyboard-snapshots', async (c) => {
+  const id = Number(c.req.param('id'))
+  return success(c, listStoryboardSnapshots(id).map(toSnakeCase))
+})
+
+// POST /episodes/:id/storyboard-snapshots/:sid/restore — 恢复快照（当前分镜会先留存为新快照）
+app.post('/:id/storyboard-snapshots/:sid/restore', async (c) => {
+  const id = Number(c.req.param('id'))
+  const sid = Number(c.req.param('sid'))
+  // 拆分或视频提示词批量正在写分镜时不允许整体替换
+  if ((await runningAgentTasks(id)).some(t => t.kind === 'breakdown' || t.kind === 'video_prompts')) {
+    return badRequest(c, '分镜拆解或视频提示词生成进行中，请等待完成后再恢复')
+  }
+  try {
+    const count = restoreStoryboardSnapshot(id, sid)
+    return success(c, { restored: count })
+  } catch (err: any) {
+    return badRequest(c, err.message || '恢复失败')
+  }
 })
 
 // GET /episodes/:episode_id/storyboards

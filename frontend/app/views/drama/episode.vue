@@ -252,6 +252,27 @@
         <template v-else>
           <!-- 制作子步骤导航（资产/分镜拆分/视频生成）由左侧栏承担，顶部不再重复展示 -->
           <!-- Sub: Assets -->
+          <BoardPanel
+            v-if="prodTab === 'board'"
+            :episode-id="epId"
+            :storyboards="sbs"
+            :scenes="scenes"
+            :characters="visualChars"
+            :prop-items="propItems"
+            :has-script="!!scriptContent"
+            :running="rt === 'storyboard_breaker'"
+            :busy="rn"
+            :progress-label="boardProgressLabel"
+            :board-reference="boardReference"
+            :image-options="boardImageOptions"
+            @generate="doBreakdown"
+            @history="openSbHistory"
+            @refresh="refresh"
+            @preview="openImageViewer"
+            @goto-assets="prodTab = 'assets'"
+            @toggle-reference="setBoardReference"
+          />
+
           <div v-if="prodTab === 'assets'" class="prod-content">
             <div class="prod-section-bar">
               <span class="dim" style="font-size:12px">{{ t('episode.prod.assets') }}</span>
@@ -491,7 +512,11 @@
                 <button class="btn btn-sm" :disabled="rn" @click="doBreakdown">
                   <Loader2 v-if="rt === 'storyboard_breaker'" :size="11" class="animate-spin" />
                   <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                  {{ sbs.length ? t('episode.sb.rebreak') : t('episode.sb.startBreak') }}
+                  {{ rt === 'storyboard_breaker' ? boardProgressLabel : (sbs.length ? t('episode.sb.rebreak') : t('episode.sb.startBreak')) }}
+                </button>
+                <button class="btn btn-sm" :disabled="rn" :title="t('episode.sb.historyTitle')" @click="openSbHistory">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 15"/></svg>
+                  {{ t('episode.sb.history') }}
                 </button>
                 <button class="btn btn-sm" :disabled="videoPromptBatch.running || !sbs.length" @click="batchVideoPrompts">
                   <Loader2 v-if="videoPromptBatch.running" :size="11" class="animate-spin" />
@@ -1422,12 +1447,48 @@
             <div class="batch-video-row"><span>{{ t('episode.vid.confirmTotal') }}</span><strong>{{ t('episode.vid.confirmApprox', { n: batchVideoTotalDuration }) }}</strong></div>
             <div class="batch-video-row"><span>{{ t('episode.vid.confirmModel') }}</span><strong>{{ effectiveVideoModelLabel || t('episode.vid.defaultModel') }}</strong></div>
             <div class="batch-video-row"><span>{{ t('episode.vid.confirmResolution') }}</span><strong>{{ episodeResolutionLabel }}</strong></div>
+            <div v-if="batchUnapprovedCount" class="batch-video-row board-unapproved-row"><span>{{ t('episode.board.unapprovedLabel') }}</span><strong>{{ t('episode.board.unapprovedCount', { n: batchUnapprovedCount }) }}</strong></div>
             <p class="batch-video-note">{{ t('episode.vid.confirmNote') }}</p>
           </div>
           <footer class="dialog-foot">
             <button class="btn" @click="batchVideoConfirm.open = false">{{ t('common.cancel') }}</button>
             <button class="btn btn-primary" @click="confirmBatchVideos">{{ t('episode.vid.confirmStart', { n: batchVideoConfirm.targets.length }) }}</button>
           </footer>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        :open="rebreakConfirm"
+        :title="t('episode.sb.rebreakTitle')"
+        :message="t('episode.sb.rebreakMessage', { n: sbs.length, v: sbVideoCount })"
+        :confirm-text="t('episode.sb.rebreak')"
+        @confirm="startBreakdown"
+        @cancel="rebreakConfirm = false"
+      />
+
+      <div v-if="sbHistory.open" class="overlay" @click.self="sbHistory.open = false">
+        <div class="dialog batch-video-dialog">
+          <header class="dialog-head">
+            <h2 class="dialog-title">{{ t('episode.sb.historyTitle') }}</h2>
+            <button class="btn btn-ghost btn-icon" @click="sbHistory.open = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </header>
+          <div class="dialog-body batch-video-body">
+            <div v-if="sbHistory.loading" class="batch-video-note"><Loader2 :size="12" class="animate-spin" /></div>
+            <p v-else-if="!sbHistory.items.length" class="batch-video-note">{{ t('episode.sb.historyEmpty') }}</p>
+            <div v-for="item in sbHistory.items" v-else :key="item.id" class="batch-video-row">
+              <span>
+                {{ new Date(item.created_at).toLocaleString() }} · {{ snapshotReasonLabel(item.reason) }}
+                <br><span class="dim" style="font-size:11px">{{ t('episode.sb.snapshotStat', { n: item.storyboard_count, v: item.video_count }) }}</span>
+              </span>
+              <button class="btn btn-sm" :disabled="!!sbHistory.restoringId" @click="restoreSbSnapshot(item)">
+                <Loader2 v-if="sbHistory.restoringId === item.id" :size="11" class="animate-spin" />
+                {{ t('episode.sb.restore') }}
+              </button>
+            </div>
+            <p class="batch-video-note">{{ t('episode.sb.historyNote') }}</p>
+          </div>
         </div>
       </div>
 
@@ -1449,7 +1510,7 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
   Users, FileText, FolderKanban, Clapperboard, Download, Loader2,
-  Plus, X, ListTodo, CircleHelp,
+  Plus, X, ListTodo, CircleHelp, LayoutPanelTop,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
 import { startTour, autoTour } from '~/composables/useTour'
@@ -1457,6 +1518,7 @@ import { useAgent } from '~/composables/useAgent'
 import { resolveTextModelSelection } from '~/utils/text-model-selection'
 import { toastError, mapError, MODERATION_RE } from '~/composables/useToast'
 import LocaleSwitcher from '~/components/LocaleSwitcher.vue'
+import BoardPanel from '~/components/BoardPanel.vue'
 
 definePageMeta({ layout: 'studio' })
 
@@ -1480,7 +1542,7 @@ const storedPanel = (() => {
 // 首个 refresh 时若已恢复面板位置，跳过按内容自动重置 scriptStep
 let panelRestored = !!storedPanel
 const panel = ref(['production', 'export'].includes(storedPanel?.panel) ? storedPanel.panel : 'script')
-const { running: rn, runningType: rt, run: runAgent } = useAgent()
+const { running: rn, runningType: rt, progress: agentProgress, run: runAgent, resume: resumeAgent } = useAgent()
 
 const localRaw = ref(''), localScript = ref('')
 const rawContent = computed(() => episode.value?.content || '')
@@ -1526,7 +1588,8 @@ async function loadExportMerges() {
 const scriptStep = ref(storedPanel ? (storedPanel.scriptStep === 0 ? 0 : 1) : 0)
 // 旧版本地存储的 'storyboard' 子步骤已并入 'videos'（视频制作）
 const storedProdTab = storedPanel?.prodTab === 'storyboard' ? 'videos' : storedPanel?.prodTab
-const prodTab = ref(['assets', 'videos'].includes(storedProdTab) ? storedProdTab : 'assets')
+// 制作环节第一步是故事板（剧本场景的落地方案），之后资产、视频
+const prodTab = ref(['board', 'assets', 'videos'].includes(storedProdTab) ? storedProdTab : 'board')
 // 面板位置变化即持久化
 watch([panel, scriptStep, prodTab], ([p, s, pt]) => {
   try { localStorage.setItem(PANEL_STORE_KEY, JSON.stringify({ panel: p, scriptStep: s, prodTab: pt })) } catch { /* 静默 */ }
@@ -2447,13 +2510,17 @@ const pendingAssetImageCount = computed(() => pendingCharacterImageCount.value +
 const assetTotalCount = computed(() => visualCharTotal.value + scenes.value.length + propItems.value.length)
 const assetReadyCount = computed(() => charImgCount.value + sceneImgCount.value + propImgCount.value)
 
+const boardSegments = computed(() => sbs.value.filter(sb => sb.board))
+const boardApprovedCount = computed(() => boardSegments.value.filter(sb => sb.board_status === 'approved').length)
 const prodTabDefs = computed(() => [
+  { id: 'board', label: t('episode.board.title'), icon: LayoutPanelTop, badge: boardSegments.value.length ? `${boardApprovedCount.value}/${boardSegments.value.length}` : '' },
   { id: 'assets', label: t('episode.prod.assets'), icon: FolderKanban, badge: assetTotalCount.value ? `${assetReadyCount.value}/${assetTotalCount.value}` : '' },
   { id: 'videos', label: t('episode.prod.videos'), icon: Clapperboard, badge: sbs.value.length ? `${shotVidCount.value}/${sbs.value.length}` : '' },
 ])
 
 const mainStageDefs = computed(() => ([
   { id: 'script', label: t('episode.stage.script'), desc: t('episode.stage.scriptDesc'), icon: FileText },
+  { id: 'board', label: t('episode.board.title'), desc: t('episode.board.stageDesc'), icon: LayoutPanelTop },
   { id: 'assets', label: t('episode.prod.assets'), desc: t('episode.stage.assetsDesc'), icon: FolderKanban },
   { id: 'videos', label: t('episode.stage.videos'), desc: t('episode.stage.videosDesc'), icon: Clapperboard },
   { id: 'export', label: t('episode.stage.export'), desc: t('episode.stage.exportDesc'), icon: Download },
@@ -2472,6 +2539,7 @@ const sidebarSections = computed(() => ([
     id: 'production',
     label: t('episode.stage.production'),
     items: [
+      { key: 'prod:board', label: t('episode.board.title'), desc: '', icon: LayoutPanelTop },
       { key: 'prod:assets', label: t('episode.prod.assets'), desc: '', icon: Users },
       { key: 'prod:videos', label: t('episode.prod.videos'), desc: '', icon: Clapperboard },
     ],
@@ -2491,7 +2559,7 @@ function sectionState(sectionId) {
   if (sectionId === 'export') return 'none'
   const done = sectionId === 'script'
     ? mainStageDone('script')
-    : mainStageDone('assets') && mainStageDone('videos')
+    : mainStageDone('board') && mainStageDone('assets') && mainStageDone('videos')
   if (done) return 'done'
 
   const hasProgress = sectionId === 'script'
@@ -2506,13 +2574,14 @@ function sectionState(sectionId) {
 const activeMainStage = computed(() => {
   if (panel.value === 'export') return 'export'
   if (panel.value === 'production') {
-    return prodTab.value === 'assets' ? 'assets' : 'videos'
+    return prodTab.value === 'board' ? 'board' : prodTab.value === 'assets' ? 'assets' : 'videos'
   }
   return 'script'
 })
 
 function mainStageDone(stageId) {
   if (stageId === 'script') return !!scriptContent.value
+  if (stageId === 'board') return !!boardSegments.value.length && boardApprovedCount.value === boardSegments.value.length
   if (stageId === 'assets') return assetTotalCount.value > 0 && assetReadyCount.value === assetTotalCount.value
   if (stageId === 'videos') {
     return !!sbs.value.length && shotVidCount.value === sbs.value.length
@@ -2525,6 +2594,11 @@ function goMainStage(stageId) {
   if (stageId === 'script') {
     panel.value = 'script'
     scriptStep.value = Math.min(scriptStep.value, 1)
+    return
+  }
+  if (stageId === 'board') {
+    panel.value = 'production'
+    prodTab.value = 'board'
     return
   }
   if (stageId === 'assets') {
@@ -2552,6 +2626,7 @@ const activeSubStepKey = computed(() => {
 // 步骤跑马灯：四段主流程（剧本 → 资产制作 → 视频制作 → 导出），段点击跳转、当前段流动光效
 const mainProgressSteps = computed(() => [
   { id: 'script', label: t('episode.stage.script') },
+  { id: 'board', label: t('episode.board.title') },
   { id: 'assets', label: t('episode.prod.assets') },
   { id: 'videos', label: t('episode.stage.videos') },
   { id: 'export', label: t('episode.stage.export') },
@@ -2718,11 +2793,14 @@ async function refresh() {
   await Promise.all([loadGenTasks(), loadExportMerges()])
 }
 
-function saveRaw() { episodeAPI.update(epId.value, { content: localRaw.value }); episode.value.content = localRaw.value }
-function saveScr() { episodeAPI.update(epId.value, { script_content: localScript.value }); episode.value.script_content = localScript.value }
-// 发给 Agent 的 message 是功能性提示词而非 UI 文案：产出语言由后端全局「内容语言」指令控制，
-// 这里保持中文不随界面语言变化
-function doRewrite() { saveRaw(); runAgent('script_rewriter', '请读取剧本并改写为格式化剧本，然后保存', dramaId, epId.value, refresh, chatModelOverride(), chatConfigId()) }
+// 返回保存请求：启动后台任务前需 await，保证 Agent 读到的是最新文本
+function saveRaw() { episode.value.content = localRaw.value; return episodeAPI.update(epId.value, { content: localRaw.value }) }
+function saveScr() { episode.value.script_content = localScript.value; return episodeAPI.update(epId.value, { script_content: localScript.value }) }
+// 改写/拆分由后端编排（发给 Agent 的消息、成败判定与产出校验都在后端），前端只启动任务并轮询
+async function doRewrite() {
+  await saveRaw()
+  runAgent('script_rewriter', () => episodeAPI.rewrite(epId.value, chatModelOverride(), chatConfigId()), refresh)
+}
 function skipRewrite() {
   const raw = (localRaw.value || rawContent.value || '').trim()
   if (!raw) {
@@ -2748,9 +2826,9 @@ function isExtracting(target) { return extractingTargets.value.includes(target) 
 
 function doExtract(target) {
   if (isExtracting(target) || !epId.value) return
-  saveScr()
   extractingTargets.value.push(target)
-  episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId())
+  saveScr()
+    .then(() => episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId()))
     .then(() => pollExtractStatus(target))
     .catch(e => {
       extractingTargets.value = extractingTargets.value.filter(x => x !== target)
@@ -2785,6 +2863,11 @@ function pollExtractStatus(target, attempts = 150) {
 /** 页面加载后恢复仍在运行的提取任务状态（刷新页面不丢进度展示） */
 async function syncExtractStatus() {
   if (!epId.value) return
+  try {
+    const at = await episodeAPI.agentTasks(epId.value)
+    const running = (at?.running || []).find(task => task.kind === 'rewrite' || task.kind === 'breakdown')
+    if (running) resumeAgent(running.kind === 'rewrite' ? 'script_rewriter' : 'storyboard_breaker', running, refresh)
+  } catch {}
   try {
     const st = await episodeAPI.extractStatus(epId.value)
     for (const x of EXTRACT_TARGETS.value) {
@@ -2862,35 +2945,66 @@ function pollVideoPromptBatch(attempts = 240) {
   }
   setTimeout(() => tick(attempts), 2500)
 }
+// 重新拆分会替换整集分镜：已有分镜时先确认（旧分镜由后端自动留存快照，可在「历史版本」恢复）
+const rebreakConfirm = ref(false)
+const sbVideoCount = computed(() => sbs.value.filter(sb => sb.video_url || sb.videoUrl).length)
 function doBreakdown() {
-  const charList = chars.value.length
-    ? chars.value.map(c => `${c.name}(ID:${c.id})`).join('、')
-    : '（当前集还没有角色）'
-  const sceneList = scenes.value.length
-    ? scenes.value.map(s => `${s.location} · ${s.time || '未设时间'}(ID:${s.id})`).join('、')
-    : '（当前集还没有场景）'
-  const propList = propItems.value.length
-    ? propItems.value.map(p => `${p.name}(ID:${p.id})`).join('、')
-    : '（当前集还没有道具）'
-  runAgent('storyboard_breaker', `请基于当前集剧本拆分分镜，并为每个分镜段落同时生成 video_prompt（视频生成提示词）。
-本次视频模型：${effectiveVideoModelLabel.value}，请按该模型的特性与时长限制生成 video_prompt。
-
-当前集已有角色：${charList}
-当前集已有场景：${sceneList}
-当前集已有道具：${propList}
-
-绑定要求：
-- 每个镜头必须根据剧本内容，从上述当前集已有角色中选出出场的角色绑定 character_ids（ID 必须来自上述列表；有角色出场就必须绑定，不要遗漏）
-- 每个镜头尽量匹配上述已有场景填写 scene_id（ID 必须来自上述列表），不要凭空创造新场景
-- 每个镜头出现关键道具（被使用、交接、特写或在画面中明显可见）时，从上述当前集已有道具中绑定 prop_ids（ID 必须来自上述列表）；没有道具出现可传空数组
-- 只有纯环境空镜头才可以不绑定角色`, dramaId, epId.value, onBreakdownDone, chatModelOverride(), chatConfigId())
+  if (rn.value) return
+  if (sbs.value.length) { rebreakConfirm.value = true; return }
+  startBreakdown()
+}
+function startBreakdown() {
+  rebreakConfirm.value = false
+  runAgent('storyboard_breaker', () => episodeAPI.breakdown(epId.value, chatModelOverride(), chatConfigId(), effectiveVideoModelLabel.value), refresh)
 }
 
-/** 拆分完成后刷新并自动补齐缺失的视频提示词（兜住 Agent 漏写/截断） */
-async function onBreakdownDone() {
-  await refresh()
-  const missing = sbs.value.filter(sb => !(sb.video_prompt || sb.videoPrompt || '').trim())
-  if (missing.length) batchVideoPrompts()
+// 故事板页签：生成进度文案、生图模型、视频是否以故事板图为参考
+const boardProgressLabel = computed(() => {
+  const phase = agentProgress.value?.phase
+  if (phase === 'extract') return t('episode.board.phaseExtract')
+  if (phase === 'fill') return t('episode.sb.fillingPrompts', { done: agentProgress.value.completed, total: agentProgress.value.total })
+  return t('episode.board.phaseDesign')
+})
+const boardImageOptions = computed(() => ({
+  model: bareModelName(imageModel.value) || undefined,
+  configId: ownerConfigId(imageModelOptions.value, imageModel.value),
+}))
+const boardReference = computed(() => {
+  const v = episode.value?.board_reference ?? episode.value?.boardReference
+  return v === undefined || v === null ? true : !!v
+})
+async function setBoardReference(on) {
+  try {
+    await episodeAPI.update(epId.value, { board_reference: on })
+    episode.value.board_reference = on
+  } catch (e) { toastError(e) }
+}
+
+// 分镜历史版本：重新拆分/恢复前的快照，恢复时当前分镜也会先留存
+const sbHistory = ref({ open: false, loading: false, restoringId: 0, items: [] })
+async function openSbHistory() {
+  sbHistory.value = { open: true, loading: true, restoringId: 0, items: [] }
+  try { sbHistory.value.items = await episodeAPI.storyboardSnapshots(epId.value) || [] }
+  catch (e) { toastError(e) }
+  finally { sbHistory.value.loading = false }
+}
+async function restoreSbSnapshot(item) {
+  if (sbHistory.value.restoringId) return
+  if (!window.confirm(t('episode.sb.restoreConfirm', { n: item.storyboard_count }))) return
+  sbHistory.value.restoringId = item.id
+  try {
+    await episodeAPI.restoreStoryboardSnapshot(epId.value, item.id)
+    toast.success(t('episode.sb.restored', { n: item.storyboard_count }))
+    sbHistory.value.open = false
+    await refresh()
+  } catch (e) {
+    toastError(e)
+  } finally {
+    sbHistory.value.restoringId = 0
+  }
+}
+function snapshotReasonLabel(reason) {
+  return reason === 'before-restore' ? t('episode.sb.snapshotBeforeRestore') : t('episode.sb.snapshotRebreak')
 }
 
 // 按需为单个分镜生成视频提示词：由 prompt_generator 读取分镜字段生成并保存到 video_prompt
@@ -2898,22 +3012,10 @@ async function genVideoPrompt(sb) {
   if (!sb || videoPromptGeneratingIds.value.includes(sb.id)) return
   const idx = sbs.value.indexOf(sb) + 1
   const cfg = selectedVideoConfig.value
-  const label = cfg ? `${cfg.name} (${cfg.provider})` : '默认'
-  const charNames = getStoryboardCharacters(sb).map(c => c.name).join('、') || '无'
-  const propNames = getStoryboardProps(sb).map(p => p.name).join('、') || '无'
+  const label = cfg ? `${cfg.name} (${cfg.provider})` : ''
   videoPromptGeneratingIds.value.push(sb.id)
   try {
-    await api.post(`/agent/prompt_generator/chat`, {
-      message: `请为分镜 #${idx}(ID:${sb.id})生成视频提示词(video_prompt)。视频模型:${label},请根据该模型的特性和时长限制生成。
-
-该分镜信息:时长 ${sb.duration || 10}s;场景:${getSceneName(sb) || '未绑定'};角色:${charNames};道具:${propNames}。
-
-请先调用 read_storyboard_context 获取该分镜的画面描述(含【镜头N】子镜头与台词/旁白)、氛围及时长,据此生成 video_prompt(按 3 秒分段换行、用 @角色名/@场景名/@道具名 引用参考素材；段落内允许多镜头切镜,但不跨场景,切镜点对齐 description 的【镜头N】结构),然后调用 update_storyboard 保存到分镜 ID:${sb.id}。只更新 video_prompt 字段,不要改动其他字段,不要重新拆分整集。`,
-      drama_id: dramaId,
-      episode_id: epId.value,
-      model: chatModelOverride() || undefined,
-      config_id: chatConfigId() || undefined,
-    })
+    await storyboardAPI.generateVideoPrompt(sb.id, chatModelOverride(), chatConfigId(), label)
     toast.success(t('episode.sb.promptGenerated', { n: idx }))
     await refresh()
   } catch (e) {
@@ -3256,44 +3358,6 @@ const mentionOptions = computed(() => {
   ]
 })
 
-// 按参考图顺序（场景图在前、角色图居中、道具图在后）为 @名字 建立索引映射，供视频提示词引用替换
-function getShotReferenceIndexMap(sb) {
-  const ordered = []
-  const seen = new Set()
-  const push = (name, url) => {
-    if (!url || seen.has(url) || ordered.length >= refImageLimit.value) return
-    seen.add(url)
-    ordered.push({ name, imageUrl: url })
-  }
-  const scene = getStoryboardScene(sb)
-  push(scene?.location || '', scene?.image_url || scene?.imageUrl)
-  for (const char of getStoryboardCharacters(sb)) {
-    push(char.name || '', char?.image_url || char?.imageUrl)
-  }
-  for (const prop of getStoryboardProps(sb)) {
-    push(prop.name || '', prop?.image_url || prop?.imageUrl)
-  }
-  const nameToIndex = {}
-  ordered.forEach((a, i) => { if (a.name && !(a.name in nameToIndex)) nameToIndex[a.name] = i + 1 })
-  return nameToIndex
-}
-
-// 将视频提示词里的 @名字 替换为 @图片N名字（N 为参考图序号，1 起），生成时使用
-function resolveVideoPromptRefs(sb) {
-  const prompt = sb.video_prompt || sb.videoPrompt || ''
-  const map = getShotReferenceIndexMap(sb)
-  const names = Object.keys(map).sort((a, b) => b.length - a.length)
-  if (!names.length) return prompt
-  return prompt.replace(/@([^\s@]+)/g, (m, raw) => {
-    for (const name of names) {
-      if (raw.startsWith(name)) {
-        return `@图片${map[name]}${name}${raw.slice(name.length)}`
-      }
-    }
-    return m
-  })
-}
-
 // 分镜时长（视频生成参数区直接编辑并保存到分镜）：
 // 统一限制 2-30s，列表/批量/单次生成统一读取该值；超出厂商支持范围由后端适配器收敛
 function onVideoDurationChange(e) {
@@ -3346,23 +3410,30 @@ function uploadAssetImage(kind, id) {
   })
 }
 
+// 故事板未审核通过时只提醒、不拦截（批量生成在确认弹窗中统一提示）
+function isBoardUnapproved(sb) {
+  return !!sb?.board && (sb.board_status || sb.boardStatus) !== 'approved'
+}
+const batchUnapprovedCount = computed(() => batchVideoConfirm.value.targets.filter(isBoardUnapproved).length)
+
 async function genVid(sb, opts = {}) {
   if (!opts.forceNew && canRecoverVideo(sb.id)) return recoverVideo(sb)
+  if (!opts.silent && isBoardUnapproved(sb) && !window.confirm(t('episode.board.unapprovedConfirm'))) return
   const latest = latestVideoTask(sb.id)
   const forceNew = opts.forceNew || latest?.status === 'failed'
   if (forceNew && !window.confirm(t('episode.recovery.confirmNew'))) return
   const referenceImages = getShotReferenceImages(sb)
-  // 参考素材完全来自分镜绑定的角色/场景/道具图片
+  // 参考素材完全来自分镜绑定的角色/场景/道具图片：由后端按绑定组装参考图并把 @名字 替换为 @图片N名字
   const params = {
     storyboard_id: sb.id,
     drama_id: dramaId,
-    prompt: resolveVideoPromptRefs(sb),
+    auto_references: true,
+    prompt: (sb.video_prompt || sb.videoPrompt || '').trim(),
     duration: Number(sb.duration || 10),
     aspect_ratio: dramaAspectRatio.value,
     generate_audio: true,
     model: bareModelName(videoModel.value) || undefined,
     config_id: ownerConfigId(videoModelOptions.value, videoModel.value),
-    reference_image_urls: referenceImages,
   }
   if (!params.prompt && !referenceImages.length) {
     toast.error(t('episode.vid.needRefOrPrompt'))

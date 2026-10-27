@@ -56,12 +56,31 @@ export const episodeAPI = {
   extractStatus: (id: number) => api.get(`/episodes/${id}/extract-status`),
   generateVideoPrompts: (id: number, model?: string, configId?: number, storyboardIds?: number[]) => api.post(`/episodes/${id}/generate-video-prompts`, { model: model || undefined, config_id: configId || undefined, storyboard_ids: storyboardIds?.length ? storyboardIds : undefined }),
   videoPromptsStatus: (id: number) => api.get(`/episodes/${id}/video-prompts-status`),
+  // 后端编排的异步 Agent 任务：立即返回 { task, already_running }，用 agentTaskAPI.get 轮询
+  rewrite: (id: number, model?: string, configId?: number) => api.post(`/episodes/${id}/rewrite`, { model: model || undefined, config_id: configId || undefined }),
+  breakdown: (id: number, model?: string, configId?: number, videoModelLabel?: string) => api.post(`/episodes/${id}/breakdown`, { model: model || undefined, config_id: configId || undefined, video_model_label: videoModelLabel || undefined }),
+  agentTasks: (id: number) => api.get(`/episodes/${id}/agent-tasks`),
+  storyboardSnapshots: (id: number) => api.get(`/episodes/${id}/storyboard-snapshots`),
+  restoreStoryboardSnapshot: (id: number, snapshotId: number) => api.post(`/episodes/${id}/storyboard-snapshots/${snapshotId}/restore`),
+  // 故事板：剧本场景分组、批量出图（storyboardIds 缺省 = 有故事板但未出图的段）
+  scriptScenes: (id: number) => api.get(`/episodes/${id}/script-scenes`),
+  boardImages: (id: number, storyboardIds?: number[], model?: string, configId?: number) => api.post(`/episodes/${id}/board-images`, { storyboard_ids: storyboardIds?.length ? storyboardIds : undefined, model: model || undefined, config_id: configId || undefined }),
+}
+
+export const agentTaskAPI = {
+  get: (id: number) => api.get(`/agent/tasks/${id}`),
 }
 
 export const storyboardAPI = {
   create: (data: any) => api.post('/storyboards', data),
   update: (id: number, data: any) => api.put(`/storyboards/${id}`, data),
   del: (id: number) => api.del(`/storyboards/${id}`),
+  generateVideoPrompt: (id: number, model?: string, configId?: number, videoModelLabel?: string) => api.post(`/storyboards/${id}/generate-video-prompt`, { model: model || undefined, config_id: configId || undefined, video_model_label: videoModelLabel || undefined }),
+  updateBoard: (id: number, board: any, extra: { duration?: number; atmosphere?: string; title?: string } = {}) => api.put(`/storyboards/${id}/board`, { board, ...extra }),
+  boardImage: (id: number, model?: string, configId?: number) => api.post(`/storyboards/${id}/board-image`, { model: model || undefined, config_id: configId || undefined }),
+  boardVersions: (id: number) => api.get(`/storyboards/${id}/board-versions`),
+  selectBoardVersion: (id: number, versionId: number) => api.post(`/storyboards/${id}/board-versions/${versionId}/select`),
+  reviewBoard: (id: number, status: 'approved' | 'rejected' | 'pending') => api.post(`/storyboards/${id}/board-review`, { status }),
 }
 
 export const characterAPI = {

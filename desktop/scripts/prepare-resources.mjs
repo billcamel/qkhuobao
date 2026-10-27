@@ -11,11 +11,19 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { prepareMacMedia } from './prepare-mac-media.mjs'
+import { collectShippedHashes } from './shipped-hashes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DESKTOP = path.resolve(__dirname, '..')
 const REPO = path.resolve(DESKTOP, '..')
 const RES = path.join(DESKTOP, 'resources')
+
+/** 技能文件历次发布版本的哈希：桌面端据此识别「用户未改动」的旧技能并升级（见 src/template-sync.ts） */
+function writeShippedHashes(templateDir) {
+  const hashes = collectShippedHashes(REPO, 'backend/workspace', 'skills')
+  fs.writeFileSync(path.join(templateDir, '.shipped-hashes.json'), JSON.stringify(hashes))
+  console.log(`shipped skill hashes: ${Object.keys(hashes).length} files`)
+}
 
 fs.rmSync(RES, { recursive: true, force: true })
 fs.mkdirSync(RES, { recursive: true })
@@ -32,6 +40,7 @@ console.log('resources/frontend ✓')
 // 2. workspace 模板（skills 技能 + prompts 提示词）
 const workspaceSrc = path.join(REPO, 'backend', 'workspace')
 fs.cpSync(workspaceSrc, path.join(RES, 'workspace-template'), { recursive: true })
+writeShippedHashes(path.join(RES, 'workspace-template'))
 console.log('resources/workspace-template ✓')
 
 // 3. macOS 两种架构独立准备；ffprobe-static 的 arm64 目录实际可能含 x64 二进制，

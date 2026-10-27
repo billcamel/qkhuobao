@@ -54,6 +54,16 @@ Organize each segment's content in this order (items with no content may be omit
 - During generation, each `@name` is automatically replaced with the corresponding reference-image marker (e.g. `@Xiaoming` → `@Image1Xiaoming`), so names must match exactly — do not abbreviate or add extra symbols
 - **Every segment must have at least one @ reference anchoring the frame**; any segment in which a character appears must @ that character; only reference scenes/characters/props already bound to this storyboard segment
 
+## When a Storyboard Exists (board is not empty)
+
+When read_storyboard_detail returns `board`, the storyboard is the only content source and takes precedence over the 3-second rule above:
+
+- Write one line per shot, using that shot's real start/end seconds (e.g. "0-5s", "5-11s") instead of 3-second slices
+- From the second shot on, start with "Cut to" and state the shot size, angle, and camera movement (from size / angle / movement)
+- Multiple beats in one shot (1A/1B) go on the same line in order: action → sound → narration/dialogue
+- `board.start_state` is the opening picture of the first shot and `board.end_state` is where the last shot lands; reflect both
+- Do not add actions, lines, or shots that are not in the storyboard
+
 ## Timeline Rules
 
 - Number of segments = storyboard-segment duration ÷ 3 seconds (rounded up); the segment time ranges must add up exactly to the total segment duration
@@ -68,4 +78,6 @@ Organize each segment's content in this order (items with no content may be omit
 
 ## Saving
 
-Call `update_storyboard` to update only this storyboard segment's `video_prompt` field; do not modify any other field, and do not re-breakdown the whole episode.
+- During storyboard breakdown: `video_prompt` is saved together with the segment fields via `save_storyboards`
+- When generating for a single storyboard: call `save_video_prompt` with only `storyboard_id` and `video_prompt`; do not modify any other field, and do not re-breakdown the whole episode
+- The save tools validate @ references: if they return an error or warnings (e.g. an @ name is not in the storyboard's bound list), fix it and save again

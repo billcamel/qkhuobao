@@ -58,7 +58,7 @@ test('video resolution is fixed per episode, editable, and locked into video tas
   // 创建集时固定（默认 720p，仅接受 480p/720p）
   assert.match(episodes, /\['480p', '720p', '1080p'\]\.includes\(body\.resolution\)/)
   // PUT 可修改，白名单校验
-  assert.match(episodes, /'status', 'resolution'\]/)
+  assert.match(episodes, /'status', 'resolution'(, 'board_reference')?\]/)
   assert.match(episodes, /resolution 只支持 480p \/ 720p/)
   // 视频任务锁定集的分辨率（优先于请求体）
   assert.match(tasks, /episodeResolution = ep\.resolution/)

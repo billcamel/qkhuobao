@@ -1,83 +1,77 @@
 ---
 name: storyboard-breaker
-description: Professional rules for storyboard breakdown — splitting a script into storyboard segments that each carry multiple sub-shots
+description: Storyboard design rules — script scene → segment → shot → beat, with every panel's visuals, camera, sound, and connecting states
 ---
 
-# Storyboard Breakdown Guide
+# Storyboard Design Guide
 
-## Core Definition: Storyboard Segment
+The storyboard turns a script scene into an executable plan: it constrains the later storyboard image, the video prompt, and video generation, so it must be specific, shootable, and reviewable.
 
-One storyboard = one **storyboard segment** = one video-generation task.
+## Levels
 
-- Each segment is **8-15 seconds** long and internally carries **2-4 sub-shots**
-- Cuts between sub-shots **are allowed**: change shot size, angle, or subject, joined with hard cuts
-- Sub-shots **never cross scenes**: a segment takes place in a single scene (`scene_id` is a segment-level binding)
-- Each sub-shot is 2-6 seconds, focused on one visual unit (one action, one reaction, one close-up)
-
-## Breakdown Process (Four Steps)
-
-1. Call `read_storyboard_context` to read the script, characters, scenes, props, and existing storyboard summaries
-2. **Beat identification**: first identify the script's narrative beats — markers such as [Opening] [Trigger] [Climax] [Resolution], or narrative turning points (location changes, rule reveals, emotional eruptions, reversals). **Beat boundaries force a segment cut**; group sub-shots within the same beat into the same segment where possible, and do not scatter a causal chain (setup-event-reaction) across different segments
-3. **Total-volume anchoring**: target total duration = script character count ÷ 500 characters/minute; segment count ≈ target total duration ÷ 12 seconds, with ±20% tolerance. Do not significantly overshoot or undershoot
-4. **Split sub-shots within each segment**: cut sub-shots at action-change points, viewpoint-change points, and subject-change points; after filling in all fields for each segment, call `save_storyboards` to save them in one go
-
-## Pacing-Tier Durations
-
-Determine duration by the segment's function — do not use one size for all:
-
-| Segment type | Duration | Notes |
+| Level | Meaning | Rules |
 |---|---|---|
-| Transition segment | 8-10 s | Traveling, empty shots, environment establishment, transitions |
-| Narrative segment | 10-15 s | Regular plot advancement, dialogue |
-| Payoff segment | 12-15 s | Close-ups, rule reveals, emotional eruptions, reversals; slower sub-shot pacing, a single sub-shot may hold for 4-6 s |
+| Script scene | `## S01 \| INT. · location \| time` in the script | One script scene becomes 1 or more segments; write a one-line scene purpose (summary), e.g. "Sacrifice · faith at its limit: badly wounded and captured, he keeps his resolve" |
+| Segment | One video generation | **4-15 seconds**, happens in a single scene (scene_id); **at most 4 panels** — split into the next segment beyond that |
+| Shot | A new shot number = a hard cut | Each shot has shot size, angle, camera movement, purpose, and in-segment start/end seconds; the timeline is contiguous and the last shot's end = segment duration |
+| Beat | Continuous action within one shot, codes 1A/1B/1C | A/B/C of the same shot do not cut — the action or camera just continues; **one beat = one panel on the board**; 1-3 beats per shot |
 
-## Dialogue Duration Floor (Hard Rule)
+## Splitting Segments
 
-**Segment duration ≥ total character count of dialogue and narration within the segment (the part written in description) ÷ 4.5 characters/second + 2 seconds of performance headroom**
+1. **Beats of the story**: split at emotional and narrative turns (setup, trigger, confrontation, eruption, aftermath); prefer cutting at beat boundaries and keep a causal chain (setup-event-reaction) in one segment
+2. **Total volume**: target total duration ≈ script length ÷ 500 characters/minute (≈ 150 words/minute in English); establishing/opening shots 4-6 s, narrative segments 8-12 s, emotional peaks 12-15 s at a slower pace
+3. **Dialogue floor**: segment duration ≥ spoken dialogue and narration time + 2 seconds of performance headroom; split if it does not fit
+4. **Continuity**: write "segment start" (start_state) and "segment end" (end_state) for every segment — each a visible state (who is where, doing what, under what light); the next segment's start must pick up the previous segment's end
 
-Dialogue that does not fit must be moved to the next segment; cramming unperformable dialogue into one segment is not allowed.
+## Writing Shots
 
-## Shot Elements
+- **size**: extreme long / long / full / medium / medium close-up / close-up / extreme close-up
+- **angle**: camera direction + height, e.g. "looking down along the mountain road from high above", "frontal, slightly off-axis, eye level", "diagonal to the map table, chest height"
+- **movement**: static / push in / pull out / pan / truck / follow / handheld, with speed and landing point, e.g. "static, then a very slow push in"
+- **purpose**: what this shot should make the audience feel, e.g. "the film's first breath: cold, still, pressed low"
 
-1. **Shot title**: a 3-5-character summary of the segment's core content (e.g. "Nightmare Awakening")
-2. **Time**: specific time of day + lighting description
-3. **Location**: full scene description + spatial layout + environmental details
-4. **Shot size**: the dominant shot size of the segment; for multi-size segments write a combination, e.g. "medium shot + close-up"
-5. **Angle**: eye-level / low angle / high angle / side / back
-6. **Camera move**: static / push-in / pull-back / pan / tracking / dolly (different sub-shots within a segment may differ)
-7. **Visual description** `description`: describe sub-shot by sub-shot as `【镜头1】…【镜头2】…` what the audience actually sees and hears — the visuals (who + specific action + body-language details + expression) come first; when a sub-shot has dialogue, write it inside the corresponding `【镜头N】` as "CharacterName says: "line"", and narration as "Narration: content"
-8. **Visual result** `result`: the immediate consequence at the end of the segment + visual details
-9. **Atmosphere** `atmosphere`: lighting + color tone + sound + overall mood
-10. **Duration** `duration`: total segment duration 8-15 seconds, and it must satisfy the dialogue duration floor
-11. **Scene binding**: if it can be matched to an existing scene, `scene_id` must be filled in
-12. **Character binding**: fill in `character_ids`, binding 0 to multiple characters involved in this segment
-13. **Prop binding**: fill in `prop_ids`, binding 0 to multiple key props appearing in this segment
+## Writing Beats (each panel)
 
-## Scene Binding Rules
+- **frame**: the composition when the panel is frozen — who is where in frame, facing, expression, foreground/background (used for the board image; one complete picture)
+- **action**: the visible change in this beat (characters, props, environment), with concrete verbs; turn emotions into visible behavior
+- **camera**: camera change while the same shot continues (optional)
+- **sound**: ambience, action sounds, music — not just "tense" or "sad"
+- **narration / dialogue**: only from the script, placed in the beat where it happens
+- **subject_arrow (red arrow)**: a short label for character/prop motion, e.g. "advance", "trace", "turn"; omit if none
+- **camera_arrow (blue arrow)**: a short label for camera motion, e.g. "slow truck", "slow push in to the lit face"; omit if none
 
-- Prefer the `scenes` returned by `read_storyboard_context`
-- When `location + time` can be clearly matched, the correct `scene_id` must be filled in
-- Do not fabricate scene IDs that do not exist
-- If the script content clearly falls within an existing scene, do not create a duplicate new scene description
+## Binding Rules
 
-## Character Binding Rules
+- `scene_id`: the scene of the segment, from the scenes returned by read_storyboard_context; required whenever it matches
+- `character_ids`: every character who appears, is seen, or speaks; empty for establishing shots
+- `prop_ids`: key props that are used, handed over, shown in close-up, or clearly visible and meaningful
+- Bound assets become reference images for the board image and the video, keeping characters, scenes, and props consistent
 
-- `character_ids` must be chosen from the character list returned by `read_storyboard_context`
-- A segment may have no characters, or may bind multiple characters
-- Any character with a clear appearance in the segment — seen, acting, or speaking — should be bound
-- Pure-environment segments, empty shots, and object close-ups may pass an empty array
+## Example (one segment, 2 shots, 3 panels)
 
-## Prop Binding Rules
-
-- `prop_ids` must be chosen from the prop list (`props`) returned by `read_storyboard_context`
-- When a prop is used by a character, handed over, shown in close-up, or clearly visible in frame and meaningful to the narrative, it must be bound to that segment
-- Prop close-up segments (without characters) should also bind the prop; `character_ids` may be empty
-- Do not bind background items or set dressing irrelevant to the plot; segments with no props pass an empty array
-- Bound props serve as reference images for video generation (white-background product shots), keeping the prop's appearance consistent across segments
+```json
+{
+  "shot_number": 3, "part": 1, "title": "Choice at the map", "duration": 11, "scene_id": 2, "character_ids": [3],
+  "atmosphere": "dim oil-lamp light, deep shadows, a far-off night wind outside",
+  "board": {
+    "start_state": "Late-night command post; an oil lamp lights the spread-out map; the commander leans over the table",
+    "end_state": "A finger rests on the Xiang River line on the map; the commander looks up and stares, silent",
+    "shots": [
+      { "no": 1, "start": 0, "end": 5, "size": "medium", "angle": "diagonal to the map table from the doorway, chest height", "movement": "static, steady gaze", "purpose": "establish the oppressive late-night decision space",
+        "beats": [ { "code": "1A", "frame": "The commander leans on both sides of the map table, the oil lamp at frame left", "action": "The lamp flame flickers; the commander leans over the map, silent for a long time", "sound": "Utter silence, only the faint crackle of the flame", "narration": "Chiang Kai-shek massed heavy forces and laid a fourth blockade line along the Xiang River." } ] },
+      { "no": 2, "start": 5, "end": 11, "size": "close-up", "angle": "looking down at the table over the commander's shoulder", "movement": "slow push in", "purpose": "press the army's fate onto a single finger",
+        "beats": [
+          { "code": "2A", "frame": "An index finger pressing on the Xiang River line on the map", "action": "A finger slowly traces the Xiang River line on the map and stops", "sound": "A fingertip brushing paper", "narration": "Whether we can cross the river decides", "subject_arrow": "trace" },
+          { "code": "2B", "frame": "Close shot of the commander looking up, half his face in lamplight", "action": "The commander looks up, grave", "camera": "the camera keeps pushing in", "sound": "Flame hiss, far-off night wind", "narration": "the life or death of this army.", "camera_arrow": "slow push in to the lit face" }
+        ] }
+    ]
+  }
+}
+```
 
 ## Quality Requirements
 
-- `description` should be human-readable, describing sub-shot by sub-shot what the audience actually sees and hears; dialogue/narration is written directly inside the corresponding `【镜头N】`
-- `image_prompt` should highlight the single-frame composition, character appearance, environment, and lighting (corresponding to the segment's first sub-shot)
-- `bgm_prompt` and `sound_effect` may be concise phrases, but must not be as vague as just "tense" or "sad"
-- To make adjustments, call `update_storyboard` to modify the specific segment
+- Every panel must be drawable on its own: concrete positions, facing, and light — no abstract emotions
+- Every cut within a segment needs a clear reason (new information, new emotion, new subject)
+- Dialogue and narration land in the beats where they happen, in order, without dropping any script lines
+- save_boards validates duration, timeline, beat codes, panel count, and the dialogue floor and returns warnings — fix them and re-save that scene

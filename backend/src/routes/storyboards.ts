@@ -3,7 +3,11 @@ import { eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, now, badRequest } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
-import { logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { generateStoryboardVideoPrompt } from '../services/video-prompts.js'
+import { boardSchema } from '../services/board.js'
+import { updateStoryboardBoard } from '../services/board-store.js'
+import { BOARD_REVIEW_STATUSES, generateBoardImage, listBoardVersions, reviewBoard, selectBoardVersion } from '../services/board-image.js'
 
 const app = new Hono()
 
@@ -159,6 +163,86 @@ app.put('/:id', async (c) => {
     propIds: body.prop_ids,
   })
   return success(c)
+})
+
+// POST /storyboards/:id/generate-video-prompt — 为单个分镜生成并保存 video_prompt（同步返回）
+app.post('/:id/generate-video-prompt', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, id))
+  if (!sb) return badRequest(c, '分镜不存在')
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
+  if (!ep) return badRequest(c, '剧集不存在')
+  try {
+    logTaskStart('VideoPrompt', 'single', { storyboardId: id, episodeId: ep.id })
+    const videoPrompt = await generateStoryboardVideoPrompt(sb, ep.dramaId, {
+      model: body.model || undefined,
+      configId: body.config_id ?? undefined,
+      videoLabel: typeof body.video_model_label === 'string' && body.video_model_label.trim() ? body.video_model_label.trim() : undefined,
+    })
+    logTaskSuccess('VideoPrompt', 'single', { storyboardId: id })
+    return success(c, { video_prompt: videoPrompt })
+  } catch (err: any) {
+    logTaskError('VideoPrompt', 'single', { storyboardId: id, error: err?.message })
+    return badRequest(c, err?.message || '视频提示词生成失败')
+  }
+})
+
+// PUT /storyboards/:id/board — 编辑故事板：校验结构、重新推导 description / video_prompt，审核状态回到 draft
+app.put('/:id/board', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const parsed = boardSchema.safeParse(body.board)
+  if (!parsed.success) return badRequest(c, `故事板格式不正确：${parsed.error.issues[0]?.message || ''}`)
+  try {
+    const warnings = await updateStoryboardBoard(id, parsed.data, {
+      duration: typeof body.duration === 'number' ? body.duration : undefined,
+      atmosphere: typeof body.atmosphere === 'string' ? body.atmosphere : undefined,
+      title: typeof body.title === 'string' ? body.title : undefined,
+    })
+    return success(c, { warnings })
+  } catch (err: any) {
+    return badRequest(c, err?.message || '保存失败')
+  }
+})
+
+// POST /storyboards/:id/board-image — 生成新一版故事板图（异步生图任务）
+app.post('/:id/board-image', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    const r = await generateBoardImage(id, { configId: body.config_id ?? undefined, model: body.model || undefined })
+    return success(c, { version_id: r.versionId, task_id: r.taskId })
+  } catch (err: any) {
+    return badRequest(c, err?.message || '出图失败')
+  }
+})
+
+// GET /storyboards/:id/board-versions — 故事板图版本（新的在前）
+app.get('/:id/board-versions', async (c) => {
+  return success(c, await listBoardVersions(Number(c.req.param('id'))))
+})
+
+// POST /storyboards/:id/board-versions/:vid/select — 选定版本为当前故事板
+app.post('/:id/board-versions/:vid/select', async (c) => {
+  try {
+    await selectBoardVersion(Number(c.req.param('id')), Number(c.req.param('vid')))
+    return success(c)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '切换失败')
+  }
+})
+
+// POST /storyboards/:id/board-review — 审核故事板（approved / rejected / pending）
+app.post('/:id/board-review', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  if (!BOARD_REVIEW_STATUSES.includes(body.status)) return badRequest(c, 'status 只支持 approved / rejected / pending')
+  try {
+    await reviewBoard(Number(c.req.param('id')), body.status)
+    return success(c)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '审核失败')
+  }
 })
 
 // DELETE /storyboards/:id

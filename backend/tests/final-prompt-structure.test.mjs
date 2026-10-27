@@ -33,7 +33,7 @@ test('grid prompt agent tools save agent-written final prompts with style inject
 })
 
 test('prompt agent instructions reference per-asset skills; skill files define the specs', () => {
-  const agents = read('src/agents/index.ts')
+  const agents = read('src/agents/default-prompts.generated.ts')
   const settings = read('../frontend/app/pages/settings.vue')
   const charSkill = read('workspace/skills/prompt-generator/character-prompt/SKILL.md')
   const sceneSkill = read('workspace/skills/prompt-generator/scene-prompt/SKILL.md')

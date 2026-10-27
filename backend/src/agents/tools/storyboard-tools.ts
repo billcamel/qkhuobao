@@ -8,8 +8,12 @@ import { z } from 'zod'
 import { db, getInsertId, schema } from '../../db/index.js'
 import { eq } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
-import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
+import { logTaskProgress, logTaskSuccess, logTaskWarn } from '../../utils/task-logger.js'
 import { getDramaId, getEpisodeId } from '../context.js'
+import { boundRefNames, checkStoryboardDraft, findInvalidRefs, loadStoryboardBindings } from '../../services/storyboard-refs.js'
+import { snapshotAndClearEpisodeStoryboards } from '../../services/storyboard-snapshots.js'
+import { boardSchema, checkBoard } from '../../services/board.js'
+import { derivedBoardFields, normalizeSceneNo, parseScriptScenes, recomputeEpisodeDuration, upsertScriptScene } from '../../services/board-store.js'
 
 async function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
   await db.delete(schema.storyboardCharacters)
@@ -93,6 +97,21 @@ async function validateStoryboardBindings(episodeId: number, dramaId: number, sc
     }
     await db.insert(schema.episodeProps).values({ episodeId, propId, createdAt: now() })
   }
+}
+
+/** 本剧资产名索引：用于按 scene_id / character_ids / prop_ids 求分镜可引用的 @名字 */
+async function loadDramaAssetNames(dramaId: number) {
+  const sceneNames = new Map((await db.select().from(schema.scenes).where(eq(schema.scenes.dramaId, dramaId)))
+    .filter(s => !s.deletedAt).map(s => [s.id, s.location]))
+  const characterNames = new Map((await db.select().from(schema.characters).where(eq(schema.characters.dramaId, dramaId)))
+    .filter(c => !c.deletedAt).map(c => [c.id, c.name]))
+  const propNames = new Map((await db.select().from(schema.props).where(eq(schema.props.dramaId, dramaId)))
+    .filter(p => !p.deletedAt).map(p => [p.id, p.name]))
+  return (sceneId: number | null | undefined, characterIds: number[] = [], propIds: number[] = []) => [
+    sceneId != null ? sceneNames.get(sceneId) : undefined,
+    ...characterIds.map(id => characterNames.get(id)),
+    ...propIds.map(id => propNames.get(id)),
+  ].filter((n): n is string => Boolean(n && n.trim()))
 }
 
 type ToolContext = ToolExecutionContext | undefined
@@ -183,6 +202,8 @@ const readStoryboardContext = createTool({
           .where(eq(schema.storyboardCharacters.storyboardId, sb.id))
         const sbPropLinks = await db.select().from(schema.storyboardProps)
           .where(eq(schema.storyboardProps.storyboardId, sb.id))
+        // 只给摘要：默认整集重拆不需要旧分镜全文，回传全文会成倍放大上下文
+        const description = sb.description || ''
         return {
           id: sb.id,
           shot_number: sb.storyboardNumber,
@@ -190,11 +211,9 @@ const readStoryboardContext = createTool({
           scene_id: sb.sceneId,
           character_ids: links.map(link => link.characterId),
           prop_ids: sbPropLinks.map(link => link.propId),
-          shot_type: sb.shotType || '',
           duration: sb.duration || 0,
-          description: sb.description || '',
-          atmosphere: sb.atmosphere || '',
-          video_prompt: sb.videoPrompt || '',
+          description: description.length > 120 ? `${description.slice(0, 120)}…` : description,
+          has_video: Boolean(sb.videoUrl || sb.composedVideoUrl),
         }
       }))
 
@@ -206,6 +225,8 @@ const readStoryboardContext = createTool({
         description: ep.description || '',
       },
       script,
+      // 剧本场景（## S01 | 内景 · 地点 | 时间段）：故事板按场景分组，每个场景 1 到多段
+      script_scenes: parseScriptScenes(script),
       characters,
       scenes,
       props,
@@ -265,15 +286,9 @@ const saveStoryboards = createTool({
       shotNumbers: storyboards.map(sb => sb.shot_number).join(','),
     })
     if (replace_existing === true) {
-      const existingStoryboardRows = await db.select().from(schema.storyboards)
-        .where(eq(schema.storyboards.episodeId, episodeId))
-      for (const storyboardId of existingStoryboardRows.map(sb => sb.id)) {
-        await db.delete(schema.storyboardCharacters)
-          .where(eq(schema.storyboardCharacters.storyboardId, storyboardId))
-        await db.delete(schema.storyboardProps)
-          .where(eq(schema.storyboardProps.storyboardId, storyboardId))
-      }
-      await db.delete(schema.storyboards).where(eq(schema.storyboards.episodeId, episodeId))
+      // 旧分镜先留存快照再清空（同一事务），误拆后可在界面整体恢复
+      const snapshotId = snapshotAndClearEpisodeStoryboards(episodeId, 'rebreakdown')
+      if (snapshotId) logTaskProgress('StoryboardTool', 'snapshot-before-replace', { episodeId, snapshotId })
     }
 
     // shot_number → id 索引（含本次调用内新增的行），保证按分镜号幂等 upsert
@@ -283,8 +298,17 @@ const saveStoryboards = createTool({
       existingRows.filter(sb => !sb.deletedAt).map(sb => [sb.storyboardNumber, sb.id]),
     )
 
+    const refNamesOf = await loadDramaAssetNames(dramaId)
+    const warnings: string[] = []
     for (const sb of storyboards) {
       await validateStoryboardBindings(episodeId, dramaId, sb.scene_id, sb.character_ids, sb.prop_ids)
+      warnings.push(...checkStoryboardDraft({
+        shotNumber: sb.shot_number,
+        duration: sb.duration,
+        description: sb.description,
+        videoPrompt: sb.video_prompt,
+        refNames: refNamesOf(sb.scene_id, sb.character_ids, sb.prop_ids),
+      }))
       const existingId = shotToId.get(sb.shot_number)
       if (existingId !== undefined) {
         await db.update(schema.storyboards).set({
@@ -336,8 +360,104 @@ const saveStoryboards = createTool({
       episodeId,
       count: storyboards.length,
       totalDuration,
+      warnings: warnings.length || undefined,
     })
-    return { message: `Saved ${storyboards.length} storyboards`, count: storyboards.length, total_duration: totalDuration }
+    if (warnings.length) logTaskWarn('StoryboardTool', 'save-warnings', { episodeId, warnings })
+    return {
+      message: `Saved ${storyboards.length} storyboards`,
+      count: storyboards.length,
+      total_duration: totalDuration,
+      ...(warnings.length ? { warnings } : {}),
+    }
+  },
+})
+
+const boardSegmentSchema = z.object({
+  shot_number: z.number().int().describe('全集段序号，从 1 起连续递增（跨场景累计）'),
+  part: z.number().int().optional().describe('该剧本场景内第几段，从 1 起'),
+  title: z.string().describe('3-5 字概括本段'),
+  duration: z.number().describe('段时长（秒），等于最后一镜的结束时间'),
+  scene_id: z.number().nullable().optional(),
+  character_ids: z.array(z.number()).optional(),
+  prop_ids: z.array(z.number()).optional(),
+  atmosphere: z.string().optional().describe('光线 + 色调 + 声音 + 整体氛围'),
+  board: boardSchema,
+})
+
+const saveBoards = createTool({
+  id: 'save_boards',
+  description: 'Save the storyboard (故事板) segments of ONE script scene. Call once per script scene in script order; the first call of a full regeneration sets replace_existing: true (old storyboards are snapshotted, then cleared). Segments are upserted by shot_number, so re-saving a scene fixes it. description and video_prompt are derived automatically from each board. Returns warnings to fix.',
+  inputSchema: z.object({
+    replace_existing: z.boolean().optional(),
+    script_scene: z.object({
+      no: z.string().describe('剧本场景号，如 S01'),
+      heading: z.string().optional().describe('场景头，如「内景 · 指挥所 | 深夜」，缺省取剧本'),
+      summary: z.string().describe('一句话场景目的，如「牺牲·信念的极致：……」'),
+    }),
+    segments: z.array(boardSegmentSchema).min(1),
+  }),
+  execute: async ({ replace_existing, script_scene, segments }, context) => {
+    const ids = requireIds(context)
+    if ('error' in ids) return ids
+    const { episodeId, dramaId } = ids
+    const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+    const scriptScenes = parseScriptScenes(ep?.scriptContent || ep?.content || '')
+    const sceneNo = normalizeSceneNo(script_scene.no)
+    const known = scriptScenes.find(s => normalizeSceneNo(s.no) === sceneNo)
+
+    if (replace_existing === true) {
+      const snapshotId = snapshotAndClearEpisodeStoryboards(episodeId, 'rebreakdown')
+      if (snapshotId) logTaskProgress('StoryboardTool', 'snapshot-before-replace', { episodeId, snapshotId })
+    }
+    await upsertScriptScene(episodeId, {
+      no: sceneNo,
+      heading: script_scene.heading || known?.heading || sceneNo,
+      summary: script_scene.summary,
+    })
+
+    const warnings: string[] = []
+    if (scriptScenes.length && !known) warnings.push(`剧本中没有场景 ${sceneNo}，请使用 read_storyboard_context 返回的 script_scenes 场景号`)
+    const existing = await db.select().from(schema.storyboards).where(eq(schema.storyboards.episodeId, episodeId))
+    const shotToId = new Map(existing.map(sb => [sb.storyboardNumber, sb.id]))
+    const ts = now()
+    for (const seg of segments) {
+      const characterIds = seg.character_ids || []
+      const propIds = seg.prop_ids || []
+      await validateStoryboardBindings(episodeId, dramaId, seg.scene_id, characterIds, propIds)
+      const derived = await derivedBoardFields(seg.board, {
+        duration: seg.duration, atmosphere: seg.atmosphere, sceneId: seg.scene_id, characterIds, propIds,
+      })
+      const fields = {
+        ...derived,
+        title: seg.title,
+        scriptScene: sceneNo,
+        atmosphere: seg.atmosphere,
+        sceneId: seg.scene_id ?? null,
+      }
+      let id = shotToId.get(seg.shot_number)
+      if (id !== undefined) {
+        await db.update(schema.storyboards).set(fields).where(eq(schema.storyboards.id, id))
+      } else {
+        const res = await db.insert(schema.storyboards).values({
+          episodeId, storyboardNumber: seg.shot_number, ...fields, createdAt: ts,
+        })
+        id = getInsertId(res)
+        shotToId.set(seg.shot_number, id)
+      }
+      await syncStoryboardCharacters(id, characterIds)
+      await syncStoryboardProps(id, propIds)
+      warnings.push(...checkBoard(seg.board, seg.duration, seg.shot_number))
+    }
+    const totalDuration = await recomputeEpisodeDuration(episodeId)
+    logTaskSuccess('StoryboardTool', 'boards-saved', {
+      episodeId, scene: sceneNo, count: segments.length, totalDuration, warnings: warnings.length || undefined,
+    })
+    if (warnings.length) logTaskWarn('StoryboardTool', 'board-warnings', { episodeId, warnings })
+    return {
+      message: `Saved ${segments.length} segments for ${sceneNo}`,
+      total_duration: totalDuration,
+      ...(warnings.length ? { warnings } : {}),
+    }
   },
 })
 
@@ -432,8 +552,95 @@ const updateStoryboard = createTool({
       characterIds: 'character_ids' in fields ? (fields.character_ids || []).join(',') : undefined,
       propIds: 'prop_ids' in fields ? (fields.prop_ids || []).join(',') : undefined,
     })
-    return { message: `Storyboard ${storyboard_id} updated` }
+    const fresh = await loadStoryboardBindings(storyboard_id)
+    const warnings = fresh ? checkStoryboardDraft({
+      shotNumber: fresh.storyboard.storyboardNumber,
+      duration: fresh.storyboard.duration,
+      description: fresh.storyboard.description,
+      videoPrompt: fresh.storyboard.videoPrompt,
+      refNames: boundRefNames(fresh),
+    }) : []
+    return { message: `Storyboard ${storyboard_id} updated`, ...(warnings.length ? { warnings } : {}) }
   },
 })
 
-export const storyboardTools = { readStoryboardContext, saveStoryboards, updateStoryboard }
+const NEIGHBOR_SUMMARY_CHARS = 160
+
+const readStoryboardDetail = createTool({
+  id: 'read_storyboard_detail',
+  description: 'Read one storyboard segment for video-prompt generation: its description/atmosphere/duration, bound scene/characters/props, the names allowed in @ references, and short summaries of the previous and next segments.',
+  inputSchema: z.object({
+    storyboard_id: z.number(),
+  }),
+  execute: async ({ storyboard_id }, context) => {
+    const ids = requireIds(context)
+    if ('error' in ids) return ids
+    const b = await loadStoryboardBindings(storyboard_id)
+    if (!b || b.storyboard.episodeId !== ids.episodeId) return { error: `Storyboard ${storyboard_id} not found in current episode` }
+    const sb = b.storyboard
+    const siblings = (await db.select().from(schema.storyboards)
+      .where(eq(schema.storyboards.episodeId, ids.episodeId)))
+      .sort((x, y) => x.storyboardNumber - y.storyboardNumber)
+    const pos = siblings.findIndex(x => x.id === sb.id)
+    const summary = (x: typeof sb | undefined) => x ? {
+      shot_number: x.storyboardNumber,
+      title: x.title || '',
+      description: (x.description || '').slice(0, NEIGHBOR_SUMMARY_CHARS),
+    } : null
+    return {
+      storyboard: {
+        id: sb.id,
+        shot_number: sb.storyboardNumber,
+        title: sb.title || '',
+        duration: sb.duration || 0,
+        description: sb.description || '',
+        atmosphere: sb.atmosphere || '',
+        current_video_prompt: sb.videoPrompt || '',
+        // 有故事板时按「镜」的真实起止时间写 video_prompt
+        board: sb.board ? JSON.parse(sb.board) : null,
+      },
+      scene: b.scene ? { name: b.scene.location, time: b.scene.time, lighting: b.scene.lighting || '' } : null,
+      characters: b.characters.map(c => ({ name: c.name, styling: c.styling || '' })),
+      props: b.props.map(p => ({ name: p.name, description: p.description || '' })),
+      allowed_ref_names: boundRefNames(b),
+      previous: summary(siblings[pos - 1]),
+      next: summary(siblings[pos + 1]),
+    }
+  },
+})
+
+const saveVideoPrompt = createTool({
+  id: 'save_video_prompt',
+  description: 'Save the video_prompt of one storyboard segment (only this field is changed). Returns warnings when @ references are not in the bound list or the prompt breaks rules; fix and save again.',
+  inputSchema: z.object({
+    storyboard_id: z.number(),
+    video_prompt: z.string(),
+  }),
+  execute: async ({ storyboard_id, video_prompt }, context) => {
+    const ids = requireIds(context)
+    if ('error' in ids) return ids
+    const b = await loadStoryboardBindings(storyboard_id)
+    if (!b || b.storyboard.episodeId !== ids.episodeId) return { error: `Storyboard ${storyboard_id} not found in current episode` }
+    const prompt = video_prompt.trim()
+    if (!prompt || prompt === 'null' || prompt === 'undefined') return { error: 'video_prompt 不能为空' }
+    await db.update(schema.storyboards)
+      .set({ videoPrompt: prompt, updatedAt: now() })
+      .where(eq(schema.storyboards.id, storyboard_id))
+    const names = boundRefNames(b)
+    const invalid = findInvalidRefs(prompt, names)
+    logTaskSuccess('StoryboardTool', 'video-prompt-saved', {
+      episodeId: ids.episodeId,
+      storyboardId: storyboard_id,
+      invalidRefs: invalid.length ? invalid.join(',') : undefined,
+    })
+    if (invalid.length) {
+      return {
+        saved: true,
+        warnings: [`@${invalid.join('、@')} 不在本分镜绑定的素材中，生成视频时无法挂接参考图；可引用：${names.join('、') || '（无绑定素材）'}。请修正后重新调用 save_video_prompt`],
+      }
+    }
+    return { saved: true }
+  },
+})
+
+export const storyboardTools = { readStoryboardContext, saveStoryboards, saveBoards, updateStoryboard, readStoryboardDetail, saveVideoPrompt }

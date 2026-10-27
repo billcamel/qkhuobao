@@ -38,6 +38,8 @@ export const episodes = sqliteTable('episodes', {
   imageConfigId: integer('image_config_id'),
   videoConfigId: integer('video_config_id'),
   resolution: text('resolution').default('720p'),
+  // 生成视频时是否把故事板图作为第 1 张参考图
+  boardReference: integer('board_reference', { mode: 'boolean' }).default(true),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
@@ -132,9 +134,69 @@ export const storyboards = sqliteTable('storyboards', {
   subtitleUrl: text('subtitle_url'),
   composedVideoUrl: text('composed_video_url'),
   status: text('status').default('pending'),
+  // 故事板：所属剧本场景（S01）、结构化故事板 JSON、审核状态、当前版本图
+  scriptScene: text('script_scene'),
+  board: text('board'),
+  boardStatus: text('board_status'),
+  boardImageUrl: text('board_image_url'),
+  boardVersionId: integer('board_version_id'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
+})
+
+// 剧本场景：故事板按剧本场景分组（## S01 | 内景 · 地点 | 时间段），summary 为场景目的
+export const episodeScriptScenes = sqliteTable('episode_script_scenes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  episodeId: integer('episode_id').notNull(),
+  sceneNo: text('scene_no').notNull(),
+  heading: text('heading').notNull(),
+  summary: text('summary'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
+// 故事板图版本：每次出图一版，图片由 sys_task 生图任务回写
+export const storyboardBoardVersions = sqliteTable('storyboard_board_versions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  storyboardId: integer('storyboard_id').notNull(),
+  version: integer('version').notNull(),
+  taskId: integer('task_id'),
+  imageUrl: text('image_url'),
+  prompt: text('prompt').notNull(),
+  createdAt: text('created_at').notNull(),
+})
+
+// 分镜快照：整集重新拆分（replace_existing）前自动留存，可整体恢复（原 ID 回填，sys_task 关联不断）
+export const storyboardSnapshots = sqliteTable('storyboard_snapshots', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  episodeId: integer('episode_id').notNull(),
+  reason: text('reason').notNull(),
+  storyboardCount: integer('storyboard_count').notNull().default(0),
+  videoCount: integer('video_count').notNull().default(0),
+  data: text('data').notNull(),
+  createdAt: text('created_at').notNull(),
+})
+
+// Agent 任务：改写/提取/拆分/视频提示词等文本 Agent 的异步执行记录（落库，重启后可见中断状态）
+export const agentTasks = sqliteTable('agent_tasks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  kind: text('kind').notNull(),
+  agentType: text('agent_type').notNull(),
+  target: text('target'),
+  dramaId: integer('drama_id').notNull(),
+  episodeId: integer('episode_id').notNull(),
+  status: text('status').notNull(),
+  total: integer('total').notNull().default(0),
+  completed: integer('completed').notNull().default(0),
+  failed: integer('failed').notNull().default(0),
+  currentRef: text('current_ref'),
+  result: text('result'),
+  error: text('error'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  finishedAt: text('finished_at'),
 })
 
 export const storyboardCharacters = sqliteTable('storyboard_characters', {

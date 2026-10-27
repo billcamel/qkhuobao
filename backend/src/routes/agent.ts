@@ -7,6 +7,7 @@ import { buildAgentRequestContext } from '../agents/context.js'
 import { mastra } from '../mastra/index.js'
 import { success, badRequest } from '../utils/response.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { getAgentTask, serializeAgentTask } from '../services/agent-tasks.js'
 
 const app = new Hono()
 
@@ -105,6 +106,13 @@ app.post('/:type/chat', async (c) => {
     console.error(err.stack || err)
     return badRequest(c, err.message || 'Agent 执行失败')
   }
+})
+
+// GET /agent/tasks/:id — 查询异步 Agent 任务（改写/提取/拆分/视频提示词）
+app.get('/tasks/:id', async (c) => {
+  const task = await getAgentTask(Number(c.req.param('id')))
+  if (!task) return badRequest(c, '任务不存在')
+  return success(c, serializeAgentTask(task))
 })
 
 // GET /agent/:type/debug

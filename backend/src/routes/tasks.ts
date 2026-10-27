@@ -6,6 +6,7 @@ import { generateImage, generateVideo, recoverVideoTask } from '../services/gene
 import { safeTaskError } from '../services/video-download.js'
 import { getActiveConfig, getConfigById } from '../services/ai.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
+import { loadStoryboardBindings, orderedReferenceAssets, resolvePromptRefs } from '../services/storyboard-refs.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -27,6 +28,9 @@ app.get('/:id/diagnostics', async c => {
 })
 
 type TaskType = 'image' | 'video'
+
+/** 故事板图作参考时的说明：只取镜头编排，不把制作标注画进视频 */
+const BOARD_REFERENCE_NOTE = '@图片1 是本段的分镜故事板，只用于参考镜头顺序、景别构图、人物动作与运镜；故事板上的文字、箭头、边框、标题栏不得出现在视频画面中。'
 
 const WAN_MEDIA_TYPES = new Set([
   'first_frame',
@@ -164,6 +168,24 @@ app.post('/', async (c) => {
       const effectiveConfig = configId
         ? (await getConfigById(configId)) ?? await getActiveConfig('video')
         : await getActiveConfig('video')
+      // auto_references：由后端按分镜绑定素材组装参考图（场景→角色→道具）并把 @名字 替换为 @图片N名字
+      if (body.auto_references === true && body.storyboard_id) {
+        const bindings = await loadStoryboardBindings(Number(body.storyboard_id))
+        if (!bindings) return badRequest(c, '分镜不存在')
+        const limit = (effectiveConfig?.provider || '').toLowerCase() === 'aliyun' ? 10 : 9
+        // 故事板图作为第 1 张参考图（集开关 board_reference，默认开）：约束镜头顺序、构图、动作与运镜
+        const [epRow] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, bindings.storyboard.episodeId))
+        const boardImage = epRow?.boardReference !== false ? bindings.storyboard.boardImageUrl : null
+        const assetRefs = orderedReferenceAssets(bindings, boardImage ? limit - 1 : limit)
+        const refs = boardImage
+          ? [{ kind: 'scene' as const, id: 0, name: '', imageUrl: boardImage }, ...assetRefs]
+          : assetRefs
+        videoBody.reference_image_urls = refs.map(r => r.imageUrl)
+        // 优先用请求带来的原始提示词（界面上可能有尚未落库的编辑），否则取分镜已保存的
+        const rawPrompt = String(videoBody.prompt || '').trim() || bindings.storyboard.videoPrompt || ''
+        const resolved = resolvePromptRefs(rawPrompt, refs)
+        videoBody.prompt = boardImage ? `${BOARD_REFERENCE_NOTE}\n${resolved}` : resolved
+      }
       const validationError = validateVideoRequest(videoBody, effectiveConfig?.provider)
       if (validationError) return badRequest(c, validationError)
     }

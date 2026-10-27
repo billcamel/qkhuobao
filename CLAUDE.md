@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-火宝短剧（Huobao Drama）— AI 短剧/漫剧一站式制作工具。全 TypeScript 栈：小说 → 剧本改写 → 资产提取 → 生图 → 分镜拆解 → 生视频 → FFmpeg 拼接导出。支持 Electron 桌面版（macOS dmg）与服务器部署。
+火宝短剧（Huobao Drama）— AI 短剧/漫剧一站式制作工具。全 TypeScript 栈：小说 → 剧本改写 → 故事板（按剧本场景设计段/镜/拍，自动补资产）→ 资产生图 → 故事板出图与审核 → 生视频 → FFmpeg 拼接导出。支持 Electron 桌面版（macOS dmg）与服务器部署。
 
 ## Structure
 
@@ -23,6 +23,8 @@ configs/   — 遗留死配置，代码零引用
 - `npm start` — tsx 生产启动
 - `npm run typecheck` — TypeScript 类型检查
 - `npm run backfill-artwork` — 存量图片/视频补缩略图与海报帧
+- `npm run sync-prompts` — 改 `workspace/prompts/*.md` 后重新生成 `src/agents/default-prompts.generated.ts`（测试校验两者一致）
+- 测试：`npx tsx --test tests/*.test.mjs tests/*.test.ts`
 
 ### Frontend (`frontend/`)
 - `npm run dev` — Vite 开发服务（端口 3013，代理 /api 与 /static 到 5679）
@@ -42,17 +44,20 @@ configs/   — 遗留死配置，代码零引用
 - **HTTP**: Hono（入口 `src/index.ts`），路由挂 `/api/v1`，`/static` 服务 DATA_ROOT，生产托管前端静态目录
 - **Database**: SQLite（better-sqlite3 + WAL），`SQLITE_PATH` 覆盖库文件位置；DDL 在 `src/db/sqlite-schema.ts`，启动时幂等重放；Drizzle 表定义 `src/db/schema.ts`（sqlite-core）
 - **路径锚点**: `src/utils/paths.ts` 统一解析 DATA_ROOT/STORAGE_ROOT；桌面版由 Electron 主进程注入 env（`HUOBAO_DATA_DIR`/`SQLITE_PATH`/`WORKSPACE_PATH`/`FRONTEND_DIST`/`FFMPEG_BIN`/`FFPROBE_BIN`），dev 走仓库相对路径默认值
-- **AI Agents**: Mastra，4 个 agent（script_rewriter / extractor / storyboard_breaker / prompt_generator），instructions 从 `workspace/prompts/*.md` + skills 动态拼接，模型按请求解析；fetch 补丁链适配国内中转站（关思考/温度/max_tokens）
-- **媒体生成**: `services/generation.ts` 统一任务生命周期（sys_task 表），适配器模式：图片 openai/gemini/volcengine，视频 volcengine/minimax
+- **AI Agents**: Mastra，4 个 agent（script_rewriter / extractor / storyboard_breaker（故事板设计）/ prompt_generator），instructions 从 `workspace/prompts/*.md` + skills 动态拼接，模型按请求解析；fetch 补丁链适配国内中转站（关思考/温度/max_tokens）。规则只写在 prompt/skill 文件里，代码里发给 Agent 的消息只描述本次任务
+- **Agent 任务**: 改写/提取/故事板/视频提示词走 `services/agent-tasks.ts`（agent_tasks 表，异步 + 前端轮询，重启标记 interrupted）；以是否实际调用保存工具判定成败，产出经规则校验后 warnings 写入任务结果
+- **故事板**: 层级 剧本场景（episode_script_scenes）→ 段（= storyboards 一行 = 一次视频生成，4-15 秒、≤4 格）→ 镜（切镜）→ 拍（1A/1B，一拍一格）。`storyboards.board` JSON 是唯一事实来源，description / video_prompt 由 `services/board.ts` 确定性推导；出图提示词由 `services/board-image.ts` 按模板拼装，每次出图一个版本（storyboard_board_versions），审核状态 draft/pending/approved/rejected；视频生成 `auto_references` 时可把故事板图作为第 1 张参考图（episodes.board_reference）
+- **分镜快照**: 整集重新生成故事板/恢复前自动留存（storyboard_snapshots，含剧本场景分组），可按原 ID 恢复
+- **媒体生成**: `services/generation.ts` 统一任务生命周期（sys_task 表），适配器模式：图片 openai/gemini/volcengine（Seedream 支持 size + 多参考图），视频 volcengine/minimax/aliyun
 - **视频拼接**: `services/ffmpeg-merge.ts`，FFmpeg 二进制内置（ffmpeg-static），可用 `FFMPEG_BIN`/`FFPROBE_BIN` 覆盖
 
 ### Frontend
 - Nuxt 3 SPA，动态路由在 `nuxt.config.ts` 的 `pages:extend` 手动注册（views/drama/）
 - `app/composables/useApi.ts` 统一 fetch 客户端（全相对路径，生产与后端同源）
-- 核心工作台 `app/views/drama/episode.vue`（剧本→制作→导出流水线）
+- 核心工作台 `app/views/drama/episode.vue`（剧本→制作（故事板 / 资产 / 视频）→导出流水线）；故事板页签为 `app/components/BoardPanel.vue`
 
 ### Desktop
-- 主进程 `desktop/src/main.ts`：单实例锁 → 空闲端口 → userData 准备（workspace 模板 copy-once + `.template-version` 版本标记）→ `utilityProcess.fork` 后端 → 轮询 health → BrowserWindow
+- 主进程 `desktop/src/main.ts`：单实例锁 → 空闲端口 → userData 准备（`src/template-sync.ts`：prompts 随版本覆盖；skills 只升级用户未改动过的文件，依据打包时从 git 历史生成的 `.shipped-hashes.json`；改模板需递增 `TEMPLATE_VERSION`）→ `utilityProcess.fork` 后端 → 轮询 health → BrowserWindow
 - userData：打包版 `~/Library/Application Support/HuobaoDrama/`，dev 版 `HuobaoDrama-Dev/`（互不干扰）
 - 后端 bundle 在 asar 内（externals 经 asar node_modules 解析，.node 自动重定向 unpacked）
 

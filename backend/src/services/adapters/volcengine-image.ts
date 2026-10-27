@@ -2,6 +2,7 @@
  * 火山引擎 veImageX 图片生成 Adapter
  * 端点: /api/v3/images/generations (注意 /api/v3 前缀)
  * 响应格式: { data: [{ url: "..." }] }
+ * 参考图：record.referenceImages（data URL 数组 JSON）→ 官方 image 字段
  */
 import type {
   ImageProviderAdapter,
@@ -12,6 +13,16 @@ import type {
   ImagePollResponse,
 } from './types'
 import { joinProviderUrl } from './url'
+
+function parseReferenceImages(raw?: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && !!v) : []
+  } catch {
+    return []
+  }
+}
 
 export class VolcEngineImageAdapter implements ImageProviderAdapter {
   provider = 'volcengine'
@@ -25,14 +36,23 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
       prompt: record.prompt,
     }
 
-    // 尺寸参数
+    // 尺寸参数：Seedream 官方用 size="宽x高"；width/height 保留兼容旧中转站
     if (record.size) {
       const [w, h] = record.size.split('x')
       if (w && h) {
+        body.size = `${parseInt(w)}x${parseInt(h)}`
         body.width = parseInt(w)
         body.height = parseInt(h)
       }
     }
+
+    // 参考图（Seedream 4.0+ 多图参考）：generation 已归一化为 data URL，官方 image 字段直接接受
+    const refs = parseReferenceImages(record.referenceImages)
+    if (refs.length) {
+      body.image = refs.length === 1 ? refs[0] : refs
+      body.sequential_image_generation = 'disabled'
+    }
+    body.watermark = false
 
     return {
       url: joinProviderUrl(config.baseUrl, '/api/v3', '/images/generations'),

@@ -39,6 +39,7 @@ try {
 const AGENT_SKILL_MAP: Record<string, string[]> = {
   script_rewriter: ['script-rewriter'],
   extractor: ['extractor'],
+  // 故事板设计：video_prompt 由故事板确定性推导，不再加载 video-prompt 技能
   storyboard_breaker: ['storyboard-breaker'],
   prompt_generator: [
     'prompt-generator/character-prompt',

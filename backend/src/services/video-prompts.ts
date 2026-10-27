@@ -1,12 +1,16 @@
 /**
- * 批量视频提示词任务 — 异步为缺少 video_prompt 的分镜逐个运行 prompt_generator Agent
- * 进程内内存态：按集跟踪一份任务，运行中不重复启动；重启后状态丢失
+ * 视频提示词生成 — prompt_generator Agent 逐分镜生成 video_prompt
+ * - 单个分镜：generateStoryboardVideoPrompt（同步，供单镜按钮与批量复用）
+ * - 批量：agent_tasks 表跟踪（kind=video_prompts），按 VIDEO_PROMPT_CONCURRENCY 并发
+ * 上下文只读单个分镜（read_storyboard_detail），保存只写 video_prompt（save_video_prompt）
  */
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { mastra } from '../mastra/index.js'
-import { buildAgentRequestContext } from '../agents/context.js'
-import { logTaskError, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { logTaskError, logTaskProgress } from '../utils/task-logger.js'
+import { runAgent, type TextModelOptions } from './agent-runner.js'
+import { latestAgentTask, startAgentTask, type AgentTaskProgress, type AgentTaskRow } from './agent-tasks.js'
+
+type StoryboardRow = typeof schema.storyboards.$inferSelect
 
 export interface VideoPromptBatchStatus {
   status: 'running' | 'done' | 'error'
@@ -19,18 +23,90 @@ export interface VideoPromptBatchStatus {
   error?: string
 }
 
-const tasks = new Map<number, VideoPromptBatchStatus>()
+/** 批量并发数：默认 3；中转站限流严格时可调小 */
+const CONCURRENCY = Math.max(1, Number(process.env.VIDEO_PROMPT_CONCURRENCY || 3) || 3)
+
+/** 视频模型标签：跟随该集锁定的视频配置，供 Agent 按模型特性生成 */
+export async function episodeVideoModelLabel(episodeId: number): Promise<string> {
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (ep?.videoConfigId) {
+    const [cfg] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, ep.videoConfigId))
+    if (cfg) return `${cfg.name} (${cfg.provider})`
+  }
+  return '默认'
+}
+
+function videoPromptMessage(sb: StoryboardRow, videoLabel: string) {
+  return `请为分镜 #${sb.storyboardNumber}(storyboard_id=${sb.id})生成视频提示词(video_prompt)。视频模型：${videoLabel}，请按该模型的特性和时长限制生成。先调用 read_storyboard_detail 读取该分镜，再调用 save_video_prompt 保存；不要改动其他分镜。`
+}
+
+/** 为单个分镜生成并保存 video_prompt；以实际落库为准，失败抛错 */
+export async function generateStoryboardVideoPrompt(
+  sb: StoryboardRow,
+  dramaId: number,
+  opts: TextModelOptions & { videoLabel?: string } = {},
+): Promise<string> {
+  const before = sb.videoPrompt || ''
+  const startedAt = new Date().toISOString()
+  const videoLabel = opts.videoLabel || await episodeVideoModelLabel(sb.episodeId)
+  await runAgent('prompt_generator', videoPromptMessage(sb, videoLabel), {
+    model: opts.model,
+    configId: opts.configId,
+    episodeId: sb.episodeId,
+    dramaId,
+    maxSteps: 8,
+  })
+  const [fresh] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb.id))
+  const prompt = (fresh?.videoPrompt || '').trim()
+  // 重新生成时旧提示词非空：要求本次确实写入过（updatedAt 晚于开始时间或内容变化）
+  const saved = prompt && (prompt !== before.trim() || (fresh?.updatedAt || '') >= startedAt)
+  if (!saved) throw new Error('Agent 已结束但没有保存视频提示词')
+  return prompt
+}
+
+/** 有限并发执行，单项失败不影响其他项 */
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  let next = 0
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++]
+      await worker(item)
+    }
+  })
+  await Promise.all(lanes)
+}
+
+/** 批量为若干分镜生成 video_prompt，进度写入任务；返回失败的分镜号 */
+export async function fillVideoPrompts(
+  storyboards: StoryboardRow[],
+  dramaId: number,
+  progress: AgentTaskProgress,
+  opts: TextModelOptions & { videoLabel?: string } = {},
+): Promise<number[]> {
+  const failedShots: number[] = []
+  await runPool(storyboards, CONCURRENCY, async (sb) => {
+    await progress.setCurrent(String(sb.id))
+    logTaskProgress('VideoPrompt', 'shot', { episodeId: sb.episodeId, storyboardId: sb.id })
+    try {
+      await generateStoryboardVideoPrompt(sb, dramaId, opts)
+      await progress.step(true)
+    } catch (err: any) {
+      failedShots.push(sb.storyboardNumber)
+      logTaskError('VideoPrompt', 'shot', { storyboardId: sb.id, error: err?.message })
+      await progress.step(false)
+    }
+  })
+  return failedShots.sort((a, b) => a - b)
+}
 
 /** 启动批量生成（立即返回）；运行中返回 started:false,total:-1；无待生成分镜返回 started:false,total:0；
  *  传入 storyboardIds 时只处理所选分镜（即使已有提示词也重新生成），否则处理全部缺失提示词的分镜 */
 export async function startVideoPromptBatch(
   episodeId: number,
   dramaId: number,
-  opts: { model?: string; configId?: number } = {},
+  opts: TextModelOptions = {},
   storyboardIds?: number[],
 ): Promise<{ started: boolean; total: number }> {
-  if (tasks.get(episodeId)?.status === 'running') return { started: false, total: -1 }
-
   const sbs = await db.select().from(schema.storyboards)
     .where(eq(schema.storyboards.episodeId, episodeId))
     .orderBy(schema.storyboards.storyboardNumber)
@@ -39,70 +115,32 @@ export async function startVideoPromptBatch(
     : sbs.filter(sb => !(sb.videoPrompt || '').trim())
   if (!pending.length) return { started: false, total: 0 }
 
-  // 视频模型标签：跟随该集锁定的视频配置，供 Agent 按模型特性生成
-  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
-  let videoLabel = '默认'
-  if (ep?.videoConfigId) {
-    const [cfg] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, ep.videoConfigId))
-    if (cfg) videoLabel = `${cfg.name} (${cfg.provider})`
-  }
-
-  const task: VideoPromptBatchStatus = {
-    status: 'running',
-    total: pending.length,
-    completed: 0,
-    failed: 0,
-    started_at: new Date().toISOString(),
-  }
-  tasks.set(episodeId, task)
-
-  logTaskStart('VideoPrompt', 'batch', { episodeId, dramaId, total: pending.length, model: opts.model || undefined })
-  ;(async () => {
-    const agent = mastra.getAgent('prompt_generator')
-    if (!agent) throw new Error('视频提示词 Agent 不可用')
-    const requestContext = buildAgentRequestContext({
-      episodeId,
-      dramaId,
-      modelOverride: opts.model || undefined,
-      textConfigId: opts.configId || undefined,
-    })
-    for (const sb of pending) {
-      task.current_storyboard_id = sb.id
-      logTaskProgress('VideoPrompt', 'batch-shot', { episodeId, storyboardId: sb.id, index: task.completed + task.failed + 1, total: task.total })
-      try {
-        await agent.generate([{
-          role: 'user',
-          content: `请为分镜 #${sb.storyboardNumber}(ID:${sb.id})生成视频提示词(video_prompt)。视频模型:${videoLabel},请根据该模型的特性和时长限制生成。
-请先调用 read_storyboard_context 获取该分镜的画面描述(含【镜头N】子镜头与台词/旁白)、氛围及时长，据此生成 video_prompt(第一行是信息头：列出该分镜出场的人物与场景，用 @角色名/@场景名 引用；之后按 3 秒分段换行、用 @角色名/@场景名/@道具名 引用参考素材；段落内允许多镜头切镜，段与段可以是不同景别/角度/对象，但不跨场景，切镜点对齐分镜 description 的【镜头N】结构),然后调用 update_storyboard 保存到分镜 ID:${sb.id}。update_storyboard 参数只传 storyboard_id 和 video_prompt 两个键,不要回传该分镜的其他任何字段,不要重新拆分整集。`,
-        }], { maxSteps: 8, requestContext })
-        // 以实际落库为准判定成败
-        const [fresh] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb.id))
-        if ((fresh?.videoPrompt || '').trim()) task.completed++
-        else {
-          task.failed++
-          logTaskError('VideoPrompt', 'batch-shot', { storyboardId: sb.id, error: 'agent finished but video_prompt is empty' })
-        }
-      } catch (err: any) {
-        task.failed++
-        logTaskError('VideoPrompt', 'batch-shot', { storyboardId: sb.id, error: err?.message })
-      }
-    }
-  })()
-    .then(() => {
-      task.status = 'done'
-      task.finished_at = new Date().toISOString()
-      task.current_storyboard_id = undefined
-      logTaskSuccess('VideoPrompt', 'batch', { episodeId, total: task.total, completed: task.completed, failed: task.failed })
-    })
-    .catch((err: any) => {
-      task.status = 'error'
-      task.finished_at = new Date().toISOString()
-      task.error = err?.message || '批量生成失败'
-      logTaskError('VideoPrompt', 'batch', { episodeId, error: err?.message })
-    })
+  const videoLabel = await episodeVideoModelLabel(episodeId)
+  const { started } = await startAgentTask(
+    { kind: 'video_prompts', agentType: 'prompt_generator', episodeId, dramaId, total: pending.length },
+    async (progress) => {
+      const failedShots = await fillVideoPrompts(pending, dramaId, progress, { ...opts, videoLabel })
+      return { failed_shots: failedShots }
+    },
+  )
+  if (!started) return { started: false, total: -1 }
   return { started: true, total: pending.length }
 }
 
-export function getVideoPromptBatchStatus(episodeId: number): VideoPromptBatchStatus | null {
-  return tasks.get(episodeId) || null
+function toBatchStatus(row: AgentTaskRow | null): VideoPromptBatchStatus | null {
+  if (!row) return null
+  return {
+    status: row.status === 'running' ? 'running' : row.status === 'done' ? 'done' : 'error',
+    total: row.total,
+    completed: row.completed,
+    failed: row.failed,
+    current_storyboard_id: row.currentRef ? Number(row.currentRef) : undefined,
+    started_at: row.createdAt,
+    finished_at: row.finishedAt || undefined,
+    error: row.error || undefined,
+  }
+}
+
+export async function getVideoPromptBatchStatus(episodeId: number): Promise<VideoPromptBatchStatus | null> {
+  return toBatchStatus(await latestAgentTask(episodeId, 'video_prompts'))
 }
