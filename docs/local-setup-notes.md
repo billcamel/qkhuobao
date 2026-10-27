@@ -50,13 +50,15 @@ export HTTPS_PROXY=http://192.168.100.240:7890 HTTP_PROXY=http://192.168.100.240
 
 ## 本地补丁清单（与上游的差异）
 
-1. **`backend/src/services/adapters/volcengine-image.ts`** — 补上参考图传递。
-   上游把 `referenceImages` 一路传到 record 却从不使用，导致每个镜头各长一张脸；现在写入 Ark 的 `image` 字段做图生图。
-   原文件备份见 `*.bak-*`（已加入 `.gitignore`）。
-2. **`backend/workspace/prompts/*.md`** — 每个 Agent 的前置模型：
+> 2026-10-27 更新到 `89c8dc3` 后：上游已原生实现参考图传递（`parseReferenceImages` → Ark `image` 字段），
+> 我们之前的适配器补丁 **已废弃删除**，不要再重新打。
+
+1. ~~`backend/src/services/adapters/volcengine-image.ts` 参考图补丁~~ —— 上游已原生支持，补丁下线。
+2. **`backend/workspace/prompts/*.md`** — 每个 Agent 的前置模型（仍需要我们维护）：
    - `script_rewriter` → `deepseek-v4-pro`（长文连贯）
    - `extractor` / `storyboard_breaker` / `prompt_generator` → `deepseek-flash`（快而省）
 3. **`scripts/start.sh`** — 单服务启动脚本（后端同时托管前端静态站，默认 5679）。
+
 4. **Seedream 请求参数**（同在 `volcengine-image.ts`）：传 `size="宽x高"`（只传 width/height 时 Ark 会忽略、出方图）；
    不传 `sequential_image_generation`（seedream-5-0-flash 报 400）；不传 `watermark=false`，保留「AI生成」角标。
 5. **故事板工作流**（制作环节：资产 → 故事板 → 视频；先定妆图再故事板，出图才能参考设定图，详见 CLAUDE.md「故事板」）：剧本场景 → 段 → 镜 → 拍，结构化故事板推导分镜描述与视频提示词；
