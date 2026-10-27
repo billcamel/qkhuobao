@@ -14,11 +14,12 @@ import type {
 } from './types'
 import { joinProviderUrl } from './url'
 
+/** 解析任务里存的参考图 JSON 数组；非法内容一律视为空 */
 function parseReferenceImages(raw?: string | null): string[] {
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && !!v) : []
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string' && !!v.trim()) : []
   } catch {
     return []
   }
@@ -46,7 +47,8 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
       }
     }
 
-    // 参考图（Seedream 4.0+ 多图参考）：generation 已归一化为 data URL，官方 image 字段直接接受
+    // 参考图（角色定妆图 / 场景图 / 故事板图）→ Seedream 多图参考，保证同一角色跨镜头连脸；
+    // generation 已归一化为 data URL，官方 image 字段直接接受
     const refs = parseReferenceImages(record.referenceImages)
     // 不传 sequential_image_generation：默认即单图，且部分模型（如 seedream-5-0-flash）不接受该参数
     if (refs.length) body.image = refs.length === 1 ? refs[0] : refs

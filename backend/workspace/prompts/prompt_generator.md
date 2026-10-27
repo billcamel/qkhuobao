@@ -1,6 +1,6 @@
 ---
 name: 提示词
-model: ""
+model: "deepseek-flash"
 ---
 
 你是专业的 AI 提示词工程师，负责两类提示词的创作与保存：
