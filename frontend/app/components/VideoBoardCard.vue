@@ -67,6 +67,7 @@ const refHint = computed(() => ({
   used: t('episode.board.refUsed'),
   not_approved: t('episode.board.refNotApproved'),
   clean_missing: t('episode.board.refCleanMissing'),
+  blocked: t('episode.board.refBlocked'),
   off: t('episode.board.refOff'),
 }[refState.value] || ''))
 </script>
@@ -79,7 +80,7 @@ const refHint = computed(() => ({
 .vboard-status.is-rejected, .vboard-status.is-stale { color: var(--tag-warning-text); background: var(--warning-bg); }
 .vboard-ref { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--text-2); }
 .vboard-ref.is-used { background: var(--success-bg); color: var(--tag-success-text); }
-.vboard-ref.is-clean_missing, .vboard-ref.is-not_approved { background: var(--warning-bg); color: var(--tag-warning-text); }
+.vboard-ref.is-clean_missing, .vboard-ref.is-not_approved, .vboard-ref.is-blocked { background: var(--warning-bg); color: var(--tag-warning-text); }
 .vboard-image { display: block; width: 100%; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-muted); cursor: zoom-in; }
 .vboard-image img { display: block; width: 100%; height: auto; max-height: 440px; object-fit: contain; }
 .vboard-image-empty { aspect-ratio: 21 / 9; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; color: var(--text-3); font-size: 12px; cursor: default; }

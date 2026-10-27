@@ -20,6 +20,7 @@ export const sqliteSchemaStatements = [
     thumbnail TEXT,
     tags TEXT,
     metadata TEXT,
+    board_ref_blocked_style TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
@@ -493,6 +494,11 @@ export function initSqliteSchema(sqlite: Database.Database) {
     script_scene: 'TEXT', board: 'TEXT', board_status: 'TEXT', board_image_url: 'TEXT', board_version_id: 'INTEGER',
   })
   addMissingColumns(sqlite, 'episodes', { board_reference: 'INTEGER DEFAULT 1' })
+  addMissingColumns(sqlite, 'dramas', { board_ref_blocked_style: 'TEXT' })
+  // 已出现过故事板参考被真人审核拒绝（自动重提）的项目：补记当前风格，后续含人物的段直接跳过关键帧
+  sqlite.exec(`UPDATE dramas SET board_ref_blocked_style = COALESCE(NULLIF(style, ''), '-')
+    WHERE board_ref_blocked_style IS NULL
+      AND id IN (SELECT drama_id FROM sys_task WHERE error_code = 'board_reference_fallback')`)
   addMissingColumns(sqlite, 'storyboard_board_versions', { clean_task_id: 'INTEGER', clean_image_url: 'TEXT' })
   const insertSeed = sqlite.prepare(SEED_SQL)
   const upgradeSeed = sqlite.prepare(UPGRADE_SQL)

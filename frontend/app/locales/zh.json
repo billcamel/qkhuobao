@@ -815,7 +815,10 @@
       "sbN": "分镜 #{n}",
       "generic": "通用",
       "fullMerge": "整集拼接",
-      "mergeKind": "合并"
+      "mergeKind": "合并",
+      "rerouted": "已重提",
+      "reroutedDesc": "故事板参考图被平台真人审核拒绝，已改用设定图参考重新生成 → 任务 #{id}",
+      "reroutedToast": "故事板参考图被拒，已自动重提为任务 #{id}"
     },
     "export": {
       "notReadyDesc": "请先完成分镜和制作流程",
@@ -986,8 +989,10 @@
         "not_approved": "未审核·不约束",
         "clean_missing": "参考图未就绪",
         "off": "参考已关闭",
-        "no_board": "无故事板"
-      }
+        "no_board": "无故事板",
+        "blocked": "写实人像·不挂"
+      },
+      "refBlocked": "本项目当前风格的真人画面关键帧不被视频平台接受（隐私审核），含人物的段已自动只用设定图参考；空镜段仍受故事板约束。更换项目风格后会重新尝试"
     }
   },
   "errors": {

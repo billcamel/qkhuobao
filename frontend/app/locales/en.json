@@ -815,7 +815,10 @@
       "sbN": "Shot #{n}",
       "generic": "General",
       "fullMerge": "Full-episode merge",
-      "mergeKind": "Merge"
+      "mergeKind": "Merge",
+      "rerouted": "Resubmitted",
+      "reroutedDesc": "Storyboard reference was rejected by the platform's privacy check; resubmitted with reference images only → task #{id}",
+      "reroutedToast": "Storyboard reference rejected; resubmitted as task #{id}"
     },
     "export": {
       "notReadyDesc": "Please finish the storyboard and production steps first",
@@ -986,8 +989,10 @@
         "not_approved": "Unapproved · not applied",
         "clean_missing": "Reference not ready",
         "off": "Reference off",
-        "no_board": "No storyboard"
-      }
+        "no_board": "No storyboard",
+        "blocked": "Realistic · skipped"
+      },
+      "refBlocked": "Video platform rejects realistic keyframes for this project's style (privacy check): segments with characters now use reference images only; empty shots still follow the storyboard. Changing the project style retries"
     }
   },
   "errors": {

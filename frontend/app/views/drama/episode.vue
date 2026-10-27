@@ -1162,6 +1162,7 @@
                   <span class="video-task-sep">·</span>
                   <span>#{{ row.id }}</span>
                 </div>
+                <div v-if="row.rerouteId" class="video-task-reroute">{{ t('episode.tasks.reroutedDesc', { id: row.rerouteId }) }}</div>
                 <div v-if="row.errorMsg" class="video-task-error" :title="row.errorMsg">
                   {{ mapError(row.errorMsg) }}
                   <div v-if="row.kind === 'video'" class="flex gap-2">
@@ -2448,8 +2449,13 @@ const genTaskDoneCount = computed(() =>
   genTasks.value.filter(t => t.status === 'completed').length +
   genMerges.value.filter(m => m.status === 'completed').length
 )
+// 故事板参考被拒、已自动改用设定图参考重提的任务：不算失败，返回重提任务号
+function rerouteTaskId(task) {
+  if (task?.status !== 'failed' || (task.error_code || task.errorCode) !== 'board_reference_fallback') return 0
+  return Number(String(task.error_msg || task.errorMsg || '').match(/#(\d+)/)?.[1]) || 0
+}
 const genTaskFailedCount = computed(() =>
-  genTasks.value.filter(t => t.status === 'failed').length +
+  genTasks.value.filter(t => t.status === 'failed' && !rerouteTaskId(t)).length +
   genMerges.value.filter(m => m.status === 'failed').length
 )
 
@@ -2482,8 +2488,9 @@ const genTaskRows = computed(() => {
     targetLabel: genTaskTargetLabel(t),
     provider: t.provider || '',
     model: t.model || '',
-    status: t.status || 'processing',
-    errorMsg: t.error_msg || '',
+    status: rerouteTaskId(t) ? 'rerouted' : (t.status || 'processing'),
+    rerouteId: rerouteTaskId(t),
+    errorMsg: rerouteTaskId(t) ? '' : (t.error_msg || ''),
     storyboardId: t.storyboard_id,
     recoverable: t.type === 'video' && t.error_code !== 'generation_failed' && !!(t.task_id || t.result_url),
     previewUrl: t.local_path || t.result_url || '',
@@ -2515,13 +2522,15 @@ function genTaskKindLabel(kind) {
 function genTaskStatusLabel(status) {
   if (status === 'completed') return t('episode.status.done')
   if (status === 'failed') return t('episode.status.failed')
+  if (status === 'rerouted') return t('episode.tasks.rerouted')
   return t('episode.status.generating')
 }
 
-// 映射到现有 video-task-status 的样式类:is-done / is-pending / is-failed
+// 映射到现有 video-task-status 的样式类:is-done / is-pending / is-failed / is-rerouted
 function genTaskStateClass(status) {
   if (status === 'completed') return 'done'
   if (status === 'failed') return 'failed'
+  if (status === 'rerouted') return 'rerouted'
   return 'pending'
 }
 
@@ -3551,6 +3560,7 @@ function boardRefHint(sb) {
   if (state === 'used') return t('episode.board.refUsed')
   if (state === 'not_approved') return t('episode.board.refNotApproved')
   if (state === 'clean_missing') return t('episode.board.refCleanMissing')
+  if (state === 'blocked') return t('episode.board.refBlocked')
   if (state === 'off') return t('episode.board.refOff')
   return ''
 }
@@ -3617,6 +3627,12 @@ async function pollVideoGeneration(generationId, storyboardId) {
         delete failedVideoMessages.value[storyboardId]
         toast.success(t('episode.vid.genDone'))
         return
+      }
+      // 故事板参考图被真人审核拒绝后后端已自动重提：改为跟踪重提的任务，不当作失败
+      const retryId = rerouteTaskId(res)
+      if (retryId) {
+        toast.info(t('episode.tasks.reroutedToast', { id: retryId }))
+        return pollVideoGeneration(retryId, storyboardId)
       }
       if (res?.status === 'failed') {
         pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
@@ -5296,6 +5312,18 @@ button.video-task-metric.on { box-shadow: 0 0 0 2px var(--accent); }
 }
 .video-task-row.is-failed {
   background: var(--error-bg);
+}
+.video-task-row.is-rerouted .video-task-preview { opacity: .6; }
+.video-task-status.is-rerouted {
+  color: var(--text-2);
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+.video-task-reroute {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 .video-task-row.active {
   background: var(--sel-bg);

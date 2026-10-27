@@ -101,5 +101,34 @@ test('privacy rejection with storyboard reference falls back to reference images
   assert.match(original.errorMsg!, /已自动改用设定图参考重新生成（任务 #\d+）/)
   assert.equal(retry?.status, 'completed')
   assert.equal(JSON.parse(retry!.params!).boardFallbackFrom, first.id)
+})
+
+test('after one rejection, segments with characters skip the keyframe; empty shots and other styles keep it', async () => {
+  const { buildStoryboardVideoInput } = await import('../src/services/video-request.ts')
+  assert.equal(db.select().from(schema.dramas).where(eq(schema.dramas.id, drama.id)).get()!.boardRefBlockedStyle, 'live-war')
+
+  const mk = (n: number, withChen: boolean) => {
+    const row = db.insert(schema.storyboards).values({ episodeId: episode.id, storyboardNumber: n, sceneId: scene.id, duration: 6, board: JSON.stringify(board), boardStatus: 'approved', videoPrompt: '0-6秒：近景。', createdAt: ts, updatedAt: ts }).returning().get()
+    if (withChen) db.insert(schema.storyboardCharacters).values({ storyboardId: row.id, characterId: chen.id }).run()
+    const ver = db.insert(schema.storyboardBoardVersions).values({ storyboardId: row.id, version: 1, prompt: 'p', imageUrl: 'static/board.png', cleanImageUrl: 'static/clean.png', createdAt: ts }).returning().get()
+    db.update(schema.storyboards).set({ boardVersionId: ver.id }).where(eq(schema.storyboards.id, row.id)).run()
+    return row.id
+  }
+  const people = mk(2, true)
+  const empty = mk(3, false)
+
+  const blocked = (await buildStoryboardVideoInput(people, { provider: 'volcengine' }))!
+  assert.equal(blocked.boardState, 'blocked')
+  assert.ok(!blocked.references.some(r => r.imageUrl === 'static/clean.png'))
+  assert.doesNotMatch(blocked.prompt, /关键画面/)
+  assert.equal(blocked.duration, 6) // 时长仍按故事板
+
+  const scenery = (await buildStoryboardVideoInput(empty, { provider: 'volcengine' }))!
+  assert.equal(scenery.boardState, 'used')
+  assert.equal(scenery.references[0].imageUrl, 'static/clean.png')
+
+  // 换风格后标记失效，重新尝试挂关键帧
+  db.update(schema.dramas).set({ style: 'live-tv' }).where(eq(schema.dramas.id, drama.id)).run()
+  assert.equal((await buildStoryboardVideoInput(people, { provider: 'volcengine' }))!.boardState, 'used')
   server.close()
 })

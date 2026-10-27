@@ -10,7 +10,7 @@ import { startBreakdown, startRewrite } from '../services/episode-agents.js'
 import { latestAgentTask, runningAgentTasks, serializeAgentTask } from '../services/agent-tasks.js'
 import { listStoryboardSnapshots, restoreStoryboardSnapshot } from '../services/storyboard-snapshots.js'
 import { listScriptScenes } from '../services/board-store.js'
-import { boardReferenceState, cleanImagesByStoryboard } from '../services/video-request.js'
+import { boardReferenceState, cleanImagesByStoryboard, isBoardRefBlocked, storyboardHasCharacters } from '../services/video-request.js'
 import { generateBoardImage } from '../services/board-image.js'
 
 const app = new Hono()
@@ -295,11 +295,14 @@ app.get('/:episode_id/storyboards', async (c) => {
 
   // 故事板参考状态：生成视频前提示「未审核 / 净版未就绪」（只有审核通过且净版就绪才会约束视频）
   const [epRow] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  const [dramaRow] = epRow ? await db.select().from(schema.dramas).where(eq(schema.dramas.id, epRow.dramaId)) : []
   const cleanImages = await cleanImagesByStoryboard(rows)
+  const blocked = isBoardRefBlocked(dramaRow)
+  const withPeople = blocked ? await storyboardHasCharacters(rows.map(r => r.id)) : new Set<number>()
 
   return success(c, rows.map((row) => ({
     ...toSnakeCase(row),
-    board_reference_state: boardReferenceState(row, epRow?.boardReference !== false, cleanImages.get(row.id)),
+    board_reference_state: boardReferenceState(row, epRow?.boardReference !== false, cleanImages.get(row.id), blocked && withPeople.has(row.id)),
     character_ids: charIdsByStoryboard.get(row.id) || [],
     prop_ids: propIdsByStoryboard.get(row.id) || [],
     characters: allChars

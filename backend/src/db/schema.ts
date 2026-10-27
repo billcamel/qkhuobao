@@ -18,6 +18,8 @@ export const dramas = sqliteTable('dramas', {
   thumbnail: text('thumbnail'),
   tags: text('tags'),
   metadata: text('metadata'),
+  // 该风格下故事板关键帧（含人物）作视频参考曾被平台真人审核拒绝：之后有人物的段不再挂故事板参考
+  boardRefBlockedStyle: text('board_ref_blocked_style'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),

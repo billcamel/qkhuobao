@@ -14,17 +14,31 @@ import { getActiveConfig, getConfigById } from './ai.js'
 import { getDramaStylePrompt } from './style-preset.js'
 import { loadStoryboardBindings, orderedReferenceAssets, resolvePromptRefs, type ReferenceAsset } from './storyboard-refs.js'
 
-/** 故事板参考状态：used 已挂净版；off 集开关关闭；not_approved 未审核通过；clean_missing 净版未就绪；no_board 无故事板 */
-export type BoardReferenceState = 'used' | 'off' | 'not_approved' | 'clean_missing' | 'no_board'
+/** 故事板参考状态：used 已挂净版；off 集开关关闭；not_approved 未审核通过；clean_missing 净版未就绪；no_board 无故事板；
+ *  blocked 本项目当前风格下含人物的关键帧曾被平台真人审核拒绝（空镜段不受影响） */
+export type BoardReferenceState = 'used' | 'off' | 'not_approved' | 'clean_missing' | 'no_board' | 'blocked'
 
 type StoryboardRow = typeof schema.storyboards.$inferSelect
 
 /** 只有审核通过的当前版本的净版关键帧才可作为视频参考（审核后改过文字/换过版本都会回到非通过状态） */
-export function boardReferenceState(sb: StoryboardRow, boardReferenceOn: boolean, cleanImageUrl: string | null | undefined): BoardReferenceState {
+export function boardReferenceState(sb: StoryboardRow, boardReferenceOn: boolean, cleanImageUrl: string | null | undefined, blockedForPeople = false): BoardReferenceState {
   if (!parseBoard(sb.board)) return 'no_board'
   if (!boardReferenceOn) return 'off'
   if (sb.boardStatus !== 'approved') return 'not_approved'
+  if (blockedForPeople) return 'blocked'
   return cleanImageUrl ? 'used' : 'clean_missing'
+}
+
+/** 项目当前风格是否已被真人审核拦过故事板参考（换风格后自动失效） */
+export function isBoardRefBlocked(drama: { style?: string | null; boardRefBlockedStyle?: string | null } | null | undefined) {
+  return !!drama?.boardRefBlockedStyle && drama.boardRefBlockedStyle === (drama.style || '-')
+}
+
+/** 段内是否有人物出场（含人物的关键帧才会触发真人审核；空镜不受影响） */
+export async function storyboardHasCharacters(storyboardIds: number[]): Promise<Set<number>> {
+  if (!storyboardIds.length) return new Set()
+  const links = await db.select().from(schema.storyboardCharacters).where(inArray(schema.storyboardCharacters.storyboardId, storyboardIds))
+  return new Set(links.map(l => l.storyboardId))
 }
 
 /** 批量求各分镜当前版本的净版关键帧地址 */
@@ -55,10 +69,13 @@ export async function buildStoryboardVideoInput(storyboardId: number, opts: { pr
   if (!bindings) return null
   const sb = bindings.storyboard
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
+  const [drama] = ep ? await db.select().from(schema.dramas).where(eq(schema.dramas.id, ep.dramaId)) : []
   const board = parseBoard(sb.board)
   const clean = (await cleanImagesByStoryboard([sb])).get(sb.id)
-  // disableBoard：真人审核兜底重提时强制不挂故事板参考
-  const boardState = boardReferenceState(sb, ep?.boardReference !== false && !opts.disableBoard, clean)
+  // disableBoard：真人审核兜底重提时强制不挂故事板参考；
+  // 本项目风格被拦过时，含人物的段直接跳过（避免每段先被拒一次），空镜段照常挂
+  const blocked = isBoardRefBlocked(drama) && bindings.characters.length > 0
+  const boardState = boardReferenceState(sb, ep?.boardReference !== false && !opts.disableBoard, clean, blocked)
 
   const limit = (opts.provider || '').toLowerCase() === 'aliyun' ? 10 : 9
   const useBoard = boardState === 'used' && !!clean && !!board

@@ -397,6 +397,11 @@ async function fallbackWithoutBoardReference(id: number) {
     const { buildStoryboardVideoInput, applyVideoStylePrefix } = await import('./video-request.js')
     const input = await buildStoryboardVideoInput(record.storyboardId, { provider: record.provider, disableBoard: true })
     if (!input) return
+    // 记住：该项目在当前风格下含人物的故事板参考会被拒，后续含人物的段直接跳过，不再先被拒一次
+    if (record.dramaId) {
+      const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, record.dramaId))
+      if (drama) await db.update(schema.dramas).set({ boardRefBlockedStyle: drama.style || '-' }).where(eq(schema.dramas.id, drama.id))
+    }
     const retryId = await generateVideo({
       storyboardId: record.storyboardId,
       dramaId: record.dramaId ?? undefined,
