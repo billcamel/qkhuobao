@@ -967,7 +967,21 @@
       "refCleanMissing": "视频参考图尚未就绪：本次只用设定图参考（可在「故事板」中重试生成）",
       "refOff": "已关闭「视频参考故事板图」：只用设定图参考",
       "cleanMissingConfirm": "这一段的故事板视频参考图还没有就绪，这次将只用设定图参考、不受故事板画面约束。仍要生成视频吗？",
-      "cleanMissingLabel": "参考图未就绪"
+      "cleanMissingLabel": "参考图未就绪",
+      "gotoEdit": "去故事板编辑",
+      "gotoImage": "去故事板出图",
+      "timelineHint": "镜头时间条：宽度按时长比例，对应视频时间轴",
+      "keyframeRef": "故事板关键帧",
+      "actualRefs": "实际发送的参考图",
+      "showActual": "查看实际发送内容",
+      "hideActual": "收起实际发送内容",
+      "refShort": {
+        "used": "约束生效",
+        "not_approved": "未审核·不约束",
+        "clean_missing": "参考图未就绪",
+        "off": "参考已关闭",
+        "no_board": "无故事板"
+      }
     }
   },
   "errors": {

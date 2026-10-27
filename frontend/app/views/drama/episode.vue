@@ -595,6 +595,14 @@
                       muted
                       tabindex="-1"
                     />
+                    <img
+                      v-else-if="task.storyboard.board_image_url"
+                      class="video-task-board-thumb"
+                      :src="thumbOf(assetImageSrc({ imageUrl: task.storyboard.board_image_url }))"
+                      alt=""
+                      loading="lazy"
+                      @error="thumbFallback($event, assetImageSrc({ imageUrl: task.storyboard.board_image_url }))"
+                    />
                     <div v-else class="video-task-empty">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                     </div>
@@ -639,8 +647,18 @@
               <div v-if="selectedSb" class="video-task-side">
               <div class="video-main-col">
               <div class="video-main-scroll">
-                <div class="video-main-grid">
-                  <section class="video-inspector-section">
+                <!-- 故事板段：先看故事板（画面、镜头时间轴、衔接），视频按它生成 -->
+                <VideoBoardCard
+                  v-if="selectedBoard"
+                  :sb="selectedSb"
+                  :board="selectedBoard"
+                  :scene-label="boardLocator(selectedSb)"
+                  @preview="openImageViewer"
+                  @edit="prodTab = 'board'"
+                />
+                <div :class="['video-main-grid', { 'is-single': !!selectedBoard }]">
+                  <!-- 故事板段的画面描述由故事板推导，在此编辑会被重新推导覆盖，故只对旧数据显示 -->
+                  <section v-if="!selectedBoard" class="video-inspector-section">
                     <span class="video-inspector-label">{{ t('episode.sb.descSection') }}</span>
                     <label class="field">
                       <span class="field-label">{{ t('episode.sb.descLabel') }} <span class="dim">({{ t('episode.sb.descHint') }})</span></span>
@@ -714,6 +732,10 @@
                       :placeholder="t('episode.inspector.videoPromptPlaceholder')"
                       @commit="v => updateField(selectedSb, 'video_prompt', v)"
                     />
+                    <button type="button" class="video-actual-toggle" @click="showActualPrompt = !showActualPrompt">
+                      {{ showActualPrompt ? t('episode.board.hideActual') : t('episode.board.showActual') }}
+                    </button>
+                    <pre v-if="showActualPrompt" class="video-actual-prompt">{{ videoPreview?.prompt || '—' }}</pre>
                   </section>
               </div>
               </div>
@@ -808,10 +830,25 @@
                 <div class="video-inspector-body">
                   <section class="video-inspector-section">
                     <div class="video-inspector-prompt-head">
-                      <span class="video-inspector-label">{{ t('episode.inspector.boundRefs') }}</span>
-                      <span class="tag mono">{{ boundRefAssets.length }}</span>
+                      <span class="video-inspector-label">{{ videoPreview ? t('episode.board.actualRefs') : t('episode.inspector.boundRefs') }}</span>
+                      <span class="tag mono">{{ videoPreview ? videoPreview.references.length : boundRefAssets.length }}</span>
                     </div>
-                    <div v-if="boundRefAssets.length" class="video-bound-refs">
+                    <!-- 与实际请求一致：顺序即 @图片N 编号，故事板段第 1 张为净版关键帧 -->
+                    <div v-if="videoPreview && videoPreview.references.length" class="video-bound-refs">
+                      <button
+                        v-for="ref in videoPreview.references"
+                        :key="ref.index"
+                        type="button"
+                        :class="['video-bound-ref', { 'is-board': ref.kind === 'board' }]"
+                        :title="`@图片${ref.index} · ${ref.kind === 'board' ? t('episode.board.keyframeRef') : ref.name}`"
+                        @click="openImageViewer(assetImageSrc({ imageUrl: ref.url }), ref.kind === 'board' ? t('episode.board.keyframeRef') : ref.name)"
+                      >
+                        <img :src="thumbOf(assetImageSrc({ imageUrl: ref.url }))" :alt="ref.name" loading="lazy" @error="thumbFallback($event, assetImageSrc({ imageUrl: ref.url }))" />
+                        <span class="video-ref-index mono">@图片{{ ref.index }}</span>
+                        <small>{{ ref.kind === 'board' ? t('episode.board.keyframeRef') : ref.name }}</small>
+                      </button>
+                    </div>
+                    <div v-else-if="!videoPreview && boundRefAssets.length" class="video-bound-refs">
                       <button
                         v-for="asset in boundRefAssets"
                         :key="asset.key"
@@ -1522,6 +1559,7 @@ import { resolveTextModelSelection } from '~/utils/text-model-selection'
 import { toastError, mapError, MODERATION_RE } from '~/composables/useToast'
 import LocaleSwitcher from '~/components/LocaleSwitcher.vue'
 import BoardPanel from '~/components/BoardPanel.vue'
+import VideoBoardCard from '~/components/VideoBoardCard.vue'
 
 definePageMeta({ layout: 'studio' })
 
@@ -2122,7 +2160,8 @@ const allVideoTaskRows = computed(() => sbs.value.map((sb, index) => {
     id: sb.id,
     index,
     storyboard: sb,
-    title: sb.description || t('episode.vid.shotN', { n: String(index + 1).padStart(2, '0') }),
+    // 故事板段用「S02 · 段标题」定位，旧数据沿用描述首行
+    title: sb.board ? boardLocator(sb) : (sb.description || t('episode.vid.shotN', { n: String(index + 1).padStart(2, '0') })),
     meta: sceneName,
     duration: Number.isFinite(duration) ? duration : 5,
     referenceCount,
@@ -3412,6 +3451,41 @@ function uploadAssetImage(kind, id) {
     }
   })
 }
+
+// ─── 视频页的故事板展示 ───
+function parseBoardJson(raw) {
+  if (!raw) return null
+  if (typeof raw === 'object') return raw
+  try { return JSON.parse(raw) } catch { return null }
+}
+const selectedBoard = computed(() => parseBoardJson(selectedSb.value?.board))
+/** 「S02 · 第 2 段 · 第四道封锁线」：剧本场景号 + 场景内段序 + 段标题 */
+function boardLocator(sb) {
+  if (!sb) return ''
+  const no = sb.script_scene || ''
+  const same = sbs.value.filter(x => x.board && (x.script_scene || '') === no)
+  const part = same.findIndex(x => x.id === sb.id) + 1
+  return [no, part ? t('episode.board.segment', { n: part }) : '', sb.title].filter(Boolean).join(' · ')
+}
+// 实际发送内容预览（提示词含风格词与 @图片N、参考图按发送顺序）：切换分镜、提示词或故事板状态变化时刷新
+const videoPreview = ref(null)
+const showActualPrompt = ref(false)
+let previewSeq = 0
+async function loadVideoPreview() {
+  const sb = selectedSb.value
+  const seq = ++previewSeq
+  if (!sb?.id) { videoPreview.value = null; return }
+  try {
+    const data = await storyboardAPI.videoPreview(sb.id, ownerConfigId(videoModelOptions.value, videoModel.value))
+    if (seq === previewSeq) videoPreview.value = data
+  } catch {
+    if (seq === previewSeq) videoPreview.value = null
+  }
+}
+watch(() => {
+  const sb = selectedSb.value
+  return sb ? [sb.id, sb.video_prompt, sb.board_status, sb.board_reference_state, sb.board_version_id, sb.scene_id, (sb.character_ids || []).join(), (sb.prop_ids || []).join(), videoModel.value].join('|') : ''
+}, loadVideoPreview)
 
 // 故事板对视频的约束只在「审核通过 + 净版关键帧就绪」时生效；其他情况只提醒、不拦截（批量在确认弹窗中统一提示）
 function boardRefState(sb) {
@@ -4830,6 +4904,14 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   gap: 16px;
   align-items: start;
 }
+.video-main-grid.is-single { grid-template-columns: 1fr; }
+.video-main-scroll > .vboard { margin-bottom: 16px; }
+.video-actual-toggle { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent-text); font-size: 12px; cursor: pointer; }
+.video-actual-prompt { margin: 0; white-space: pre-wrap; font-size: 11.5px; line-height: 1.55; background: var(--surface-muted); border-radius: var(--radius-sm); padding: 8px 10px; max-height: 260px; overflow: auto; color: var(--text-1); }
+.video-bound-ref { position: relative; }
+.video-bound-ref.is-board { outline: 2px solid var(--accent); outline-offset: -2px; }
+.video-ref-index { position: absolute; top: 3px; left: 3px; font-size: 10px; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, .62); color: #fff; }
+.video-task-board-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 .video-remote-source {
   display: flex;
   flex-direction: column;

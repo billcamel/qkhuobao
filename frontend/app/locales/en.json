@@ -967,7 +967,21 @@
       "refCleanMissing": "Video reference not ready yet: only reference images are used (retry in Storyboard)",
       "refOff": "“Use board as video reference” is off: only reference images are used",
       "cleanMissingConfirm": "This segment’s storyboard video reference is not ready, so only reference images will be used without storyboard constraints. Generate the video anyway?",
-      "cleanMissingLabel": "Reference not ready"
+      "cleanMissingLabel": "Reference not ready",
+      "gotoEdit": "Edit in Storyboard",
+      "gotoImage": "Generate in Storyboard",
+      "timelineHint": "Shot timeline: widths are proportional to duration and match the video timeline",
+      "keyframeRef": "Storyboard keyframe",
+      "actualRefs": "Reference images actually sent",
+      "showActual": "Show what is actually sent",
+      "hideActual": "Hide what is actually sent",
+      "refShort": {
+        "used": "Constraint active",
+        "not_approved": "Unapproved · not applied",
+        "clean_missing": "Reference not ready",
+        "off": "Reference off",
+        "no_board": "No storyboard"
+      }
     }
   },
   "errors": {

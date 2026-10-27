@@ -967,7 +967,21 @@
       "refCleanMissing": "비디오 참조 이미지가 아직 준비되지 않음: 설정 이미지만 참조합니다(「스토리보드」에서 다시 시도 가능)",
       "refOff": "「비디오에서 보드 참조」가 꺼져 있음: 설정 이미지만 참조합니다",
       "cleanMissingConfirm": "이 구간의 스토리보드 비디오 참조 이미지가 아직 준비되지 않아 설정 이미지만 참조하고 스토리보드 화면 제약을 받지 않습니다. 그래도 비디오를 생성할까요?",
-      "cleanMissingLabel": "참조 이미지 미준비"
+      "cleanMissingLabel": "참조 이미지 미준비",
+      "gotoEdit": "스토리보드에서 편집",
+      "gotoImage": "스토리보드에서 이미지 생성",
+      "timelineHint": "컷 타임라인: 너비가 길이에 비례하며 비디오 타임라인에 대응",
+      "keyframeRef": "스토리보드 키프레임",
+      "actualRefs": "실제 전송되는 참조 이미지",
+      "showActual": "실제 전송 내용 보기",
+      "hideActual": "실제 전송 내용 접기",
+      "refShort": {
+        "used": "제약 적용",
+        "not_approved": "미승인·미적용",
+        "clean_missing": "참조 이미지 미준비",
+        "off": "참조 꺼짐",
+        "no_board": "스토리보드 없음"
+      }
     }
   },
   "errors": {

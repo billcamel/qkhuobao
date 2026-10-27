@@ -76,6 +76,8 @@ export const storyboardAPI = {
   update: (id: number, data: any) => api.put(`/storyboards/${id}`, data),
   del: (id: number) => api.del(`/storyboards/${id}`),
   generateVideoPrompt: (id: number, model?: string, configId?: number, videoModelLabel?: string) => api.post(`/storyboards/${id}/generate-video-prompt`, { model: model || undefined, config_id: configId || undefined, video_model_label: videoModelLabel || undefined }),
+  // 实际将发送给视频模型的提示词 / 参考图 / 时长（不提交任务）
+  videoPreview: (id: number, configId?: number) => api.get(`/storyboards/${id}/video-preview${configId ? `?config_id=${configId}` : ''}`),
   updateBoard: (id: number, board: any, extra: { duration?: number; atmosphere?: string; title?: string } = {}) => api.put(`/storyboards/${id}/board`, { board, ...extra }),
   boardImage: (id: number, model?: string, configId?: number) => api.post(`/storyboards/${id}/board-image`, { model: model || undefined, config_id: configId || undefined }),
   boardVersions: (id: number) => api.get(`/storyboards/${id}/board-versions`),
