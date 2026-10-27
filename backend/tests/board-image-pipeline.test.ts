@@ -72,7 +72,7 @@ test('board image: Seedream request carries size and reference images; result be
   assert.equal(body.size, '3024x1296') // 3 格 → 21:9
   assert.ok(Array.isArray(body.image) && body.image.length === 2, 'scene + character references')
   assert.match(body.image[0], /^data:image\//)
-  assert.equal(body.watermark, false)
+  assert.equal('watermark' in body, false) // 保留 Ark 默认的「AI生成」角标（合规）
   assert.match(body.prompt, /「内景 指挥所 - 深夜｜11秒」/)
   assert.match(body.prompt, /图1是场景「指挥所」；图2是人物「陈将军」/)
 
@@ -100,7 +100,7 @@ test('approving a board generates a clean keyframe image used as the video refer
   }
   assert.equal(task?.status, 'completed', task?.errorMsg || '')
   const body = requests[1]
-  assert.equal(body.size, '3840x720') // 3 格横向拼接
+  assert.equal(body.size, '4096x768') // 3 格 16:9 横向拼接，总宽封顶 4096
   assert.equal(typeof body.image, 'string') // 只参考故事板图本身
   assert.match(body.prompt, /彻底去掉所有文字/)
   const fresh = db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.id, version.id)).get()!

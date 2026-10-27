@@ -72,11 +72,21 @@ export function boardHeading(heading: string | null | undefined, fallback: strin
   return h.replace(/\s*[·・]\s*/g, ' ').replace(/\s*[|｜]\s*/g, ' - ')
 }
 
-/** 按格数选画幅：1 格 4:3，2 格 16:9，3-4 格 21:9（像素数落在 Seedream 允许范围内） */
-export function boardImageSize(panels: number) {
-  if (panels <= 1) return '2304x1728'
-  if (panels === 2) return '2560x1440'
-  return '3024x1296'
+/** 项目画幅 "9:16" → 宽高比；非法值按 16:9 */
+export function parseAspect(aspect?: string | null) {
+  const m = String(aspect || '').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/)
+  const w = m ? Number(m[1]) : 16
+  const h = m ? Number(m[2]) : 9
+  return { label: m ? `${m[1]}:${m[2]}` : '16:9', ratio: w / h, portrait: h > w }
+}
+
+/** 故事板整页画幅：横幅画格 1 格 4:3、2 格 16:9、3-4 格 21:9；竖幅画格整体收窄一档（像素数落在 Seedream 允许范围内） */
+export function boardImageSize(panels: number, aspect?: string | null) {
+  const portrait = parseAspect(aspect).portrait
+  const sizes = portrait
+    ? ['1728x2304', '2304x1728', '2560x1440', '3024x1296']
+    : ['2304x1728', '2560x1440', '3024x1296', '3024x1296']
+  return sizes[Math.min(Math.max(panels, 1), 4) - 1]
 }
 
 function panelTitle(shot: BoardShot, beat: BoardBeat, beatIndex: number, T: BoardText) {
@@ -103,6 +113,8 @@ export interface BoardImagePromptInput {
   refs: { name: string; kind: 'scene' | 'character' | 'prop' }[]
   stylePrompt?: string
   lang?: ContentLanguage | null
+  /** 项目画幅（如 9:16），决定每格画面的比例 */
+  aspect?: string | null
 }
 
 /** 拼装故事板出图提示词（版式 + 每格内容 + 参考图说明 + 风格） */
@@ -130,7 +142,7 @@ export function buildBoardImagePrompt(input: BoardImagePromptInput): string {
   })
 
   return [
-    `一张专业影视分镜故事板（storyboard sheet），白色背景，横版排版，整洁的制作文档风格，共 ${panels.length} 格画面横向等宽并排。`,
+    `一张专业影视分镜故事板（storyboard sheet），白色背景，横版排版，整洁的制作文档风格，共 ${panels.length} 格画面横向等宽并排，每格画面比例为 ${parseAspect(input.aspect).label}（${parseAspect(input.aspect).portrait ? '竖幅' : '横幅'}）。`,
     `顶部左侧粗体大标题：「${input.heading}｜${T.total(input.duration)}」；标题下方一行小字：「${T.rule}」。`,
     `顶部中间一个细线方框，内写：「${shotRanges}」。顶部右侧图例：红色箭头配文字「${T.legendSubject}」，蓝色箭头配文字「${T.legendCamera}」。`,
     `标题下方一条浅蓝色横条，居中写：「${T.start}${input.board.start_state}」。`,
@@ -150,6 +162,7 @@ export async function generateBoardImage(storyboardId: number, opts: { configId?
   if (!board) throw new Error('该分镜还没有故事板，请先生成故事板')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, b.storyboard.episodeId))
   if (!ep) throw new Error('剧集不存在')
+  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, ep.dramaId))
 
   const [scriptScene] = b.storyboard.scriptScene
     ? (await db.select().from(schema.episodeScriptScenes).where(eq(schema.episodeScriptScenes.episodeId, ep.id)))
@@ -163,6 +176,7 @@ export async function generateBoardImage(storyboardId: number, opts: { configId?
     refs: refs.map(r => ({ name: r.name, kind: r.kind })),
     stylePrompt: await getDramaStylePrompt(ep.dramaId),
     lang: getContentLanguage(),
+    aspect: drama?.aspectRatio,
   })
 
   const [last] = await db.select().from(schema.storyboardBoardVersions)
@@ -177,7 +191,7 @@ export async function generateBoardImage(storyboardId: number, opts: { configId?
     dramaId: ep.dramaId,
     prompt,
     model: opts.model,
-    size: boardImageSize(boardPanels(board).length),
+    size: boardImageSize(boardPanels(board).length, drama?.aspectRatio),
     referenceImages: refs.map(r => r.imageUrl),
     frameType: 'board',
     boardVersionId: versionId,
@@ -229,20 +243,22 @@ export async function selectBoardVersion(storyboardId: number, versionId: number
 // 实测：带文字/箭头的故事板直接喂给视频模型，构图约束很好，但箭头等标注会被画进视频开头。
 // 因此视频参考改用净版：以故事板图为参考做编辑，只保留画格画面，去掉所有制作标注。
 
-/** 净版画幅：画格横向等宽拼接（每格 16:9），4 格改 2×2，宽度不超过 4096 */
-export function cleanBoardSize(panels: number) {
-  if (panels <= 1) return '1920x1080'
-  if (panels === 2) return '3200x900'
-  if (panels === 3) return '3840x720'
-  return '2560x1440'
+/** 净版画幅：画格按项目画幅横向等宽拼接，单格高 1080（横幅）/ 1920（竖幅），总宽不超过 4096 */
+export function cleanBoardSize(panels: number, aspect?: string | null) {
+  const { ratio, portrait } = parseAspect(aspect)
+  const n = Math.max(panels, 1)
+  let height = portrait ? 1920 : 1080
+  if (n * height * ratio > 4096) height = 4096 / (n * ratio)
+  const round8 = (v: number) => Math.max(8, Math.round(v / 8) * 8)
+  return `${round8(n * height * ratio)}x${round8(height)}`
 }
 
-export function buildCleanBoardPrompt(panels: number) {
+export function buildCleanBoardPrompt(panels: number, aspect?: string | null) {
+  const { label, portrait } = parseAspect(aspect)
+  const frame = `每格画面比例为 ${label}（${portrait ? '竖幅' : '横幅'}）`
   const layout = panels <= 1
-    ? '只输出这一格画面，铺满整张图'
-    : panels === 4
-      ? '把 4 格画面按原顺序排成 2×2 网格（左上、右上、左下、右下），格与格之间没有间隙'
-      : `把 ${panels} 格画面按原顺序从左到右等宽横向并排，格与格之间没有间隙`
+    ? `只输出这一格画面，铺满整张图，${frame}`
+    : `把 ${panels} 格画面按原顺序从左到右等宽横向并排，${frame}，格与格之间没有间隙`
   return [
     '参考图是一张电影分镜故事板。请只保留其中的画格画面内容，生成一张干净的关键帧拼图。',
     `${layout}。`,
@@ -263,13 +279,14 @@ export async function generateCleanBoardImage(versionId: number, opts: { configI
   const board = parseBoard(sb?.board)
   if (!sb || !board) return null
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
+  const [drama] = ep ? await db.select().from(schema.dramas).where(eq(schema.dramas.id, ep.dramaId)) : []
   const panels = boardPanels(board).length
   const taskId = await generateImage({
     storyboardId: sb.id,
     dramaId: ep?.dramaId,
-    prompt: buildCleanBoardPrompt(panels),
+    prompt: buildCleanBoardPrompt(panels, drama?.aspectRatio),
     model: opts.model,
-    size: cleanBoardSize(panels),
+    size: cleanBoardSize(panels, drama?.aspectRatio),
     referenceImages: [v.imageUrl],
     frameType: 'board_clean',
     boardVersionId: v.id,

@@ -77,6 +77,15 @@ test('script scene parsing and heading formatting', () => {
   assert.equal(boardImage.boardHeading('内景 · 指挥所 | 深夜', 'x'), '内景 指挥所 - 深夜')
   assert.equal(boardImage.boardImageSize(1), '2304x1728')
   assert.equal(boardImage.boardImageSize(3), '3024x1296')
+  assert.equal(boardImage.boardImageSize(1, '9:16'), '1728x2304') // 竖屏短剧：整页收窄一档
+  assert.equal(boardImage.boardImageSize(3, '9:16'), '2560x1440')
+  // 净版：按项目画幅横向拼接，总宽不超过 4096
+  assert.equal(boardImage.cleanBoardSize(1, '9:16'), '1080x1920')
+  assert.equal(boardImage.cleanBoardSize(2, '9:16'), '2160x1920')
+  assert.equal(boardImage.cleanBoardSize(4, '9:16'), '4096x1824')
+  assert.equal(boardImage.cleanBoardSize(2, '16:9'), '3840x1080')
+  assert.equal(boardImage.cleanBoardSize(3), '4096x768')
+  assert.match(boardImage.buildCleanBoardPrompt(2, '9:16'), /每格画面比例为 9:16（竖幅）/)
 })
 
 test('save_boards stores boards per script scene, derives fields, snapshots on replace', async () => {
@@ -120,9 +129,9 @@ test('editing a board re-derives fields and resets review status', async () => {
 test('board image prompt lays out the sheet and references bound assets', () => {
   const prompt = boardImage.buildBoardImagePrompt({
     board: sample, heading: '内景 指挥所 - 深夜', duration: 11,
-    refs: [{ name: '指挥所', kind: 'scene' }, { name: '陈将军', kind: 'character' }], stylePrompt: 'cinematic', lang: 'zh',
+    refs: [{ name: '指挥所', kind: 'scene' }, { name: '陈将军', kind: 'character' }], stylePrompt: 'cinematic', lang: 'zh', aspect: '9:16',
   })
-  assert.match(prompt, /共 3 格画面/)
+  assert.match(prompt, /共 3 格画面横向等宽并排，每格画面比例为 9:16（竖幅）/)
   assert.match(prompt, /「内景 指挥所 - 深夜｜11秒」/)
   assert.match(prompt, /Shot 1：0-5秒　Shot 2：5-11秒/)
   assert.match(prompt, /第2格：标题栏写「2A｜特写｜5-11秒」，标题栏左上角有红底白字「CUT」/)

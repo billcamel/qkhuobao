@@ -57,6 +57,14 @@ export HTTPS_PROXY=http://192.168.100.240:7890 HTTP_PROXY=http://192.168.100.240
    - `script_rewriter` → `deepseek-v4-pro`（长文连贯）
    - `extractor` / `storyboard_breaker` / `prompt_generator` → `deepseek-flash`（快而省）
 3. **`scripts/start.sh`** — 单服务启动脚本（后端同时托管前端静态站，默认 5679）。
+4. **Seedream 请求参数**（同在 `volcengine-image.ts`）：传 `size="宽x高"`（只传 width/height 时 Ark 会忽略、出方图）；
+   不传 `sequential_image_generation`（seedream-5-0-flash 报 400）；不传 `watermark=false`，保留「AI生成」角标。
+5. **故事板工作流**（制作环节第一步，详见 CLAUDE.md「故事板」）：剧本场景 → 段 → 镜 → 拍，结构化故事板推导分镜描述与视频提示词；
+   每段一张 Seedream 故事板图（版本 + 审核）；审核通过后自动生成去标注的「净版关键帧图」作视频第 1 张参考图。
+   实测：带文字/箭头的故事板直接做视频参考，箭头会被画进视频开头；不挂故事板时构图与场景明显偏离设定图。
+6. **文本 Agent 编排**：改写/提取/故事板/视频提示词改为落库异步任务（agent_tasks），以是否调用保存工具判定成败并做规则校验；
+   重新生成故事板前自动留存快照，可恢复。
+7. **稳健性**：生图结果下载对连接超时重试（实测 Ark TOS 偶发 10 秒连接超时会丢图）；API Key 含中文/空白时给出明确提示。
 
 ## 运行方式
 
@@ -77,6 +85,7 @@ export HTTPS_PROXY=http://192.168.100.240:7890 HTTP_PROXY=http://192.168.100.240
 
 - **Seedance 不接收首帧**，只走多模态参考图，所以「从这张图开始动」做不到，只能靠参考图 + 提示词描述起始画面。
 - **Ark 视频有真人隐私过滤**：拿 i2i 产出的高写实图当 `reference_image` 会被拒（`InputImageSensitiveContentDetected.PrivacyInformation`）。**纯文生图产出的定妆图能过**。所以：定妆图必须纯文生图，然后每个镜头都用它当参考。
+  故事板图与净版关键帧图都是 i2i 产物：3D 漫剧风格实测能过；写实风格若被拒，在故事板页签关掉「视频参考故事板图」即可（只用定妆图参考）。
 - **连脸靠提示词锚定**：把发型发色、脸型、服装、耳饰在每条提示词里逐字重写一遍，并固定机位、压低动作幅度；实测人脸相似度 0.47→0.66（女主）、0.41→0.69（男主），不合格帧归零。
 - 合规：AI 生成内容需按《AI生成合成内容标识办法》显式标识，图片角标别去。
 

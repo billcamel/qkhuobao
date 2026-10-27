@@ -52,7 +52,7 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
     const refs = parseReferenceImages(record.referenceImages)
     // 不传 sequential_image_generation：默认即单图，且部分模型（如 seedream-5-0-flash）不接受该参数
     if (refs.length) body.image = refs.length === 1 ? refs[0] : refs
-    body.watermark = false
+    // 不传 watermark=false：保留 Ark 默认的「AI生成」角标（《AI生成合成内容标识办法》合规要求，见 docs/local-setup-notes.md）
 
     return {
       url: joinProviderUrl(config.baseUrl, '/api/v3', '/images/generations'),
