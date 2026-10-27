@@ -141,6 +141,17 @@ test('board image prompt lays out the sheet and references bound assets', () => 
   assert.match(prompt, /本段开始：深夜指挥所/)
   assert.match(prompt, /图1是场景「指挥所」；图2是人物「陈将军」/)
   assert.match(prompt, /画面风格：cinematic/)
+  // 每格写明出场人物：1A 有陈将军，2A（手指划过）没有设定人物
+  assert.match(prompt, /第1格：[^\n]*这一格出场的设定人物：陈将军，每人只画一次/)
+  assert.match(prompt, /第2格：[^\n]*这一格没有设定人物出场/) // 「手指划过」写到了手
+  const empty = boardImage.buildBoardImagePrompt({
+    board: { start_state: 's', end_state: 'e', shots: [{ no: 1, start: 0, end: 4, size: '特写', angle: '侧对雨幕', beats: [{ code: '1A', frame: '雨丝斜斜地穿过画面，雨点打在泥水上', action: '雨打在泥地上' }] }] },
+    heading: 'h', duration: 4, refs: [{ name: '泥泞山路', kind: 'scene' }], lang: 'zh',
+  })
+  assert.match(empty, /第1格：[^\n]*这一格是空镜：画面中没有任何人物/)
+  assert.match(empty, /画面（空镜特写，无人物，镜头对准的是景物本身）：雨丝斜斜地穿过画面/)
+  assert.doesNotMatch(empty, /侧对雨幕）/) // 空镜不写容易被读成人物朝向的机位角度
+  assert.match(prompt, /同一个人物在同一格中只能出现一次/)
 })
 
 test('board versions, selection and review', async () => {

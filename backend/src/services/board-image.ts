@@ -65,6 +65,9 @@ const TEXT: Record<ContentLanguage, BoardText> = {
   },
 }
 
+/** 画面描述里出现「人」的字眼时不判为空镜（人群、背影、队伍等） */
+const HUMAN_WORDS = /人|队伍|战士|士兵|兵|身影|背影|众|他|她|们|手|脚|脸|character|person|people|soldier|crowd|figure|人物|キャラ|兵士|사람|병사|군인/i
+
 /** 场景头「内景 · 指挥所 | 深夜」→ 故事板标题「内景 指挥所 - 深夜」 */
 export function boardHeading(heading: string | null | undefined, fallback: string) {
   const h = (heading || '').trim()
@@ -127,15 +130,34 @@ export function buildBoardImagePrompt(input: BoardImagePromptInput): string {
     return `图${i + 1}是${kind}「${r.name}」`
   }).join('；')
 
+  // 每格出场人物：绑定角色中名字出现在该格画面/动作描述里的人。实测不写明时模型会凭空加人或把同一角色画两次
+  const characterNames = input.refs.filter(r => r.kind === 'character').map(r => r.name).filter(Boolean)
+  const panelPeople = (beat: BoardBeat) => {
+    const text = `${beat.frame || ''}${beat.action}`
+    return characterNames.filter(n => text.includes(n))
+  }
   const panelDesc = panels.map((p, i) => {
     const cut = i > 0 && p.beatIndex === 0
+    const people = panelPeople(p.beat)
+    const text = `${p.beat.frame || ''}${p.beat.action}`
+    const empty = !people.length && !HUMAN_WORDS.test(text.replace(/^空镜[：:]/, ''))
+    const cast = people.length
+      ? `这一格出场的设定人物：${people.join('、')}，每人只画一次，不要重复画同一个人`
+      : HUMAN_WORDS.test(text)
+        ? '这一格没有设定人物出场：只画画面描述中写到的人（如人群、背影），不要添加有清晰面孔的人物'
+        // 实测：「特写 + 侧对雨幕」这类空镜，模型会脑补出一个人物特写，必须明确写空镜
+        : '这一格是空镜：画面中没有任何人物，不要出现人脸、人影或身体局部'
     const arrows = [
       p.beat.subject_arrow ? `画面上用红色箭头标注人物/道具动作方向，箭头旁写「${p.beat.subject_arrow}」` : '',
       p.beat.camera_arrow ? `画面上用蓝色箭头标注摄影机运动，箭头旁写「${p.beat.camera_arrow}」` : '',
     ].filter(Boolean).join('；')
     return [
       `第${i + 1}格：标题栏写「${panelTitle(p.shot, p.beat, p.beatIndex, T)}」${cut ? '，标题栏左上角有红底白字「CUT」标记' : ''}`,
-      `画面（${p.shot.size}，${p.shot.angle || ''}）：${p.beat.frame || p.beat.action}`,
+      // 空镜：先声明无人，再写镜头对准的物体；不写机位角度（「侧对雨幕」会被读成人物朝向，实测会画出人物特写）
+      empty
+        ? `画面（空镜${p.shot.size}，无人物，镜头对准的是景物本身）：${(p.beat.frame || p.beat.action).replace(/^空镜[：:]\s*/, '')}`
+        : `画面（${p.shot.size}，${p.shot.angle || ''}）：${p.beat.frame || p.beat.action}`,
+      cast,
       arrows,
       `画面下方文字区逐行写：${panelLines(p.shot, p.beat, p.beatIndex, T).map(l => `「${l}」`).join('、')}`,
     ].filter(Boolean).join('。')
@@ -149,6 +171,7 @@ export function buildBoardImagePrompt(input: BoardImagePromptInput): string {
     ...panelDesc,
     `画格下方一条浅蓝色横条，居中写：「${T.end}${input.board.end_state}」。右下角小字：「${T.footer}」。`,
     refDesc ? `参考图：${refDesc}。画格中的人物、场景、道具外观必须与对应参考图一致。` : '',
+    '每一格只画该格描述里的人物，同一个人物在同一格中只能出现一次，不要凭空添加其他角色。',
     `画格内的画面为电影剧照质感，光影与构图专业${input.stylePrompt ? `，画面风格：${input.stylePrompt}` : ''}。`,
     '所有文字清晰可读、不要错字、不要重复、不要乱码；文字只出现在标题栏、横条与文字区，不要写进画面内容里。',
   ].filter(Boolean).join('\n')

@@ -32,7 +32,7 @@ The storyboard turns a script scene into an executable plan: it constrains the l
 
 ## Writing Beats (each panel)
 
-- **frame**: the composition when the panel is frozen — who is where in frame, facing, expression, foreground/background (used for the board image; one complete picture)
+- **frame**: the composition when the panel is frozen — who is where in frame, facing, expression, foreground/background (used for the board image; one complete picture). **Panels without people start with "空镜：" (empty shot) and name the object the camera is on** (e.g. "空镜：raindrops hitting a muddy puddle, throwing up tiny splashes"); avoid words like "facing" or "looking back" that read as a person's action
 - **action**: the visible change in this beat (characters, props, environment), with concrete verbs; turn emotions into visible behavior
 - **camera**: camera change while the same shot continues (optional)
 - **sound**: ambience, action sounds, music — not just "tense" or "sad"
