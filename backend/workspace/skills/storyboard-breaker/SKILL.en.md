@@ -21,6 +21,7 @@ The storyboard turns a script scene into an executable plan: it constrains the l
 1. **Beats of the story**: split at emotional and narrative turns (setup, trigger, confrontation, eruption, aftermath); prefer cutting at beat boundaries and keep a causal chain (setup-event-reaction) in one segment
 2. **Total volume**: target total duration ≈ script length ÷ 500 characters/minute (≈ 150 words/minute in English); establishing/opening shots 5-6 s, narrative segments 8-12 s, emotional peaks 12-15 s at a slower pace
 3. **Dialogue floor**: segment duration ≥ spoken dialogue and narration time + 2 seconds of performance headroom; split if it does not fit
+   - **Each shot must also fit its own dialogue**: shot duration ≥ that shot's spoken time + 1 second. In practice the video model finishes the line first and stretches a shot that is too short, pushing every later cut back so the storyboard timeline no longer matches
 4. **Continuity**: write "segment start" (start_state) and "segment end" (end_state) for every segment — each a visible state (who is where, doing what, under what light); the next segment's start must pick up the previous segment's end
 
 ## Writing Shots

@@ -56,6 +56,14 @@ test('checkBoard: contiguous timeline, beat codes, panel limit, duration range',
   five.shots[0].beats.push({ code: '1B', action: 'a' }, { code: '1C', action: 'b' })
   five.shots[1].beats.push({ code: '2C', action: 'c' })
   assert.ok(board.checkBoard(five, 11, 3).some(x => /超过 4 格/.test(x)))
+  // 逐镜台词下限：24 字台词约 5.3 秒 + 1 秒，6 秒的镜放不下
+  const tight = structuredClone(sample)
+  tight.shots[0].end = 6; tight.shots[1].start = 6; tight.shots[1].end = 13
+  tight.shots[0].beats[0].narration = undefined
+  tight.shots[0].beats[0].dialogue = [{ speaker: '陈将军', line: '敌人在这里布了第四道封锁线。三十万人，就等着我们过江。' }]
+  assert.ok(board.checkBoard(tight, 13, 4).some(x => /镜 1 的台词\/旁白约需 7 秒，镜头只有 6 秒/.test(x)))
+  tight.shots[0].end = 8; tight.shots[1].start = 8
+  assert.ok(!board.checkBoard(tight, 13, 4).some(x => /镜 1 的台词/.test(x)))
 })
 
 test('board derives description and shot-timed video prompt with @ references', () => {

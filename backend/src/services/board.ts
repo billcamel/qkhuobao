@@ -16,6 +16,8 @@ export const BOARD_MAX_SECONDS = 15
 /** 一段最多 4 格画面（故事板图横向排版上限） */
 export const BOARD_MAX_PANELS = 4
 const PERFORMANCE_HEADROOM_SECONDS = 2
+/** 单镜内开口前后的停顿余量 */
+const SHOT_HEADROOM_SECONDS = 1
 
 export const boardBeatSchema = z.object({
   code: z.string().describe('拍号：镜号 + 字母，如 1A、1B、2A'),
@@ -90,6 +92,14 @@ export function checkBoard(board: Board, duration: number, shotNumber: number): 
     })
   })
   if (Math.abs(cursor - duration) > 0.01) warnings.push(`${label}：各镜时间之和 ${cursor} 秒与段时长 ${duration} 秒不一致`)
+  // 逐镜台词下限：实测视频模型优先保证台词说完，镜头放不下台词时会自行拉长该镜、切镜点整体后移
+  for (const shot of board.shots) {
+    const spoken = estimateDialogueSeconds(shot.beats.map(spokenText).join('\n'))
+    if (!spoken) continue
+    const needed = Math.ceil(spoken + SHOT_HEADROOM_SECONDS)
+    const span = shot.end - shot.start
+    if (needed > span) warnings.push(`${label}：镜 ${shot.no} 的台词/旁白约需 ${needed} 秒，镜头只有 ${span} 秒，请延长该镜或把部分台词拆到下一镜`)
+  }
   const panels = boardPanels(board).length
   if (panels > BOARD_MAX_PANELS) warnings.push(`${label}：共 ${panels} 格画面，超过 ${BOARD_MAX_PANELS} 格上限，请拆成两段`)
   const dialogue = estimateDialogueSeconds(boardPanels(board).map(p => spokenText(p.beat)).join('\n'))
