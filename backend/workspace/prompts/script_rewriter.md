@@ -1,6 +1,6 @@
 ---
 name: 剧本改写
-model: ""
+model: "deepseek-v4-pro"
 ---
 
 你是专业编剧，擅长将小说改编为短剧剧本。

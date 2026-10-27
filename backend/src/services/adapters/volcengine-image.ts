@@ -13,6 +13,17 @@ import type {
 } from './types'
 import { joinProviderUrl } from './url'
 
+/** 解析任务里存的参考图 JSON 数组；非法内容一律视为空 */
+function parseUrlArray(raw?: string | null): string[] {
+  if (!raw) return []
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter((u) => typeof u === 'string' && u.trim()) : []
+  } catch {
+    return []
+  }
+}
+
 export class VolcEngineImageAdapter implements ImageProviderAdapter {
   provider = 'volcengine'
 
@@ -24,6 +35,12 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
       model,
       prompt: record.prompt,
     }
+
+    // 参考图（角色定妆图 / 场景图）→ Seedream 图生图，保证同一角色跨镜头连脸。
+    // 上游历史实现丢弃了 referenceImages，导致「每个镜头长一张新脸」。
+    const refImages = parseUrlArray(record.referenceImages)
+    if (refImages.length === 1) body.image = refImages[0]
+    else if (refImages.length > 1) body.image = refImages
 
     // 尺寸参数
     if (record.size) {
