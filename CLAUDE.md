@@ -54,7 +54,7 @@ configs/   — 遗留死配置，代码零引用
 ### Frontend
 - Nuxt 3 SPA，动态路由在 `nuxt.config.ts` 的 `pages:extend` 手动注册（views/drama/）
 - `app/composables/useApi.ts` 统一 fetch 客户端（全相对路径，生产与后端同源）
-- 核心工作台 `app/views/drama/episode.vue`（剧本→制作（资产 / 故事板 / 视频）→导出流水线）；故事板页签为 `app/components/BoardPanel.vue`；视频制作页故事板段顶部为 `VideoBoardCard.vue`（故事板图 + 镜头时间条），右栏「实际发送的参考图」与「查看实际发送内容」取自 `GET /storyboards/:id/video-preview`
+- 核心工作台 `app/views/drama/episode.vue`（剧本→制作（资产 / 故事板 / 视频）→导出流水线）；故事板页签为 `app/components/BoardPanel.vue`；视频制作页故事板段顶部为 `VideoBoardCard.vue`（上下布局：整宽故事板图 → 镜头时间条 → 段首段尾），右栏「实际发送的参考图」与「查看实际发送内容」取自 `GET /storyboards/:id/video-preview`
 
 ### Desktop
 - 主进程 `desktop/src/main.ts`：单实例锁 → 空闲端口 → userData 准备（`src/template-sync.ts`：prompts 随版本覆盖；skills 只升级用户未改动过的文件，依据打包时从 git 历史生成的 `.shipped-hashes.json`；改模板需递增 `TEMPLATE_VERSION`）→ `utilityProcess.fork` 后端 → 轮询 health → BrowserWindow
