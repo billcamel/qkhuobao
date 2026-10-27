@@ -959,7 +959,8 @@
         "processing": "Video reference generating…",
         "completed": "Video reference ready",
         "failed": "Video reference failed"
-      }
+      },
+      "missingAssets": "{n} asset(s) have no reference image ({names}). Storyboard images use reference images, so generate them in Asset Production first; otherwise characters and scenes may look inconsistent."
     }
   },
   "errors": {

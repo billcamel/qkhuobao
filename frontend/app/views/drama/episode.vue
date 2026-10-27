@@ -1588,8 +1588,8 @@ async function loadExportMerges() {
 const scriptStep = ref(storedPanel ? (storedPanel.scriptStep === 0 ? 0 : 1) : 0)
 // 旧版本地存储的 'storyboard' 子步骤已并入 'videos'（视频制作）
 const storedProdTab = storedPanel?.prodTab === 'storyboard' ? 'videos' : storedPanel?.prodTab
-// 制作环节第一步是故事板（剧本场景的落地方案），之后资产、视频
-const prodTab = ref(['board', 'assets', 'videos'].includes(storedProdTab) ? storedProdTab : 'board')
+// 制作环节顺序：资产（定妆图/场景图，所有画面的一致性锚点）→ 故事板（文字设计 + 出图审核，出图参考设定图）→ 视频
+const prodTab = ref(['assets', 'board', 'videos'].includes(storedProdTab) ? storedProdTab : 'assets')
 // 面板位置变化即持久化
 watch([panel, scriptStep, prodTab], ([p, s, pt]) => {
   try { localStorage.setItem(PANEL_STORE_KEY, JSON.stringify({ panel: p, scriptStep: s, prodTab: pt })) } catch { /* 静默 */ }
@@ -2513,15 +2513,15 @@ const assetReadyCount = computed(() => charImgCount.value + sceneImgCount.value 
 const boardSegments = computed(() => sbs.value.filter(sb => sb.board))
 const boardApprovedCount = computed(() => boardSegments.value.filter(sb => sb.board_status === 'approved').length)
 const prodTabDefs = computed(() => [
-  { id: 'board', label: t('episode.board.title'), icon: LayoutPanelTop, badge: boardSegments.value.length ? `${boardApprovedCount.value}/${boardSegments.value.length}` : '' },
   { id: 'assets', label: t('episode.prod.assets'), icon: FolderKanban, badge: assetTotalCount.value ? `${assetReadyCount.value}/${assetTotalCount.value}` : '' },
+  { id: 'board', label: t('episode.board.title'), icon: LayoutPanelTop, badge: boardSegments.value.length ? `${boardApprovedCount.value}/${boardSegments.value.length}` : '' },
   { id: 'videos', label: t('episode.prod.videos'), icon: Clapperboard, badge: sbs.value.length ? `${shotVidCount.value}/${sbs.value.length}` : '' },
 ])
 
 const mainStageDefs = computed(() => ([
   { id: 'script', label: t('episode.stage.script'), desc: t('episode.stage.scriptDesc'), icon: FileText },
-  { id: 'board', label: t('episode.board.title'), desc: t('episode.board.stageDesc'), icon: LayoutPanelTop },
   { id: 'assets', label: t('episode.prod.assets'), desc: t('episode.stage.assetsDesc'), icon: FolderKanban },
+  { id: 'board', label: t('episode.board.title'), desc: t('episode.board.stageDesc'), icon: LayoutPanelTop },
   { id: 'videos', label: t('episode.stage.videos'), desc: t('episode.stage.videosDesc'), icon: Clapperboard },
   { id: 'export', label: t('episode.stage.export'), desc: t('episode.stage.exportDesc'), icon: Download },
 ]))
@@ -2539,8 +2539,8 @@ const sidebarSections = computed(() => ([
     id: 'production',
     label: t('episode.stage.production'),
     items: [
-      { key: 'prod:board', label: t('episode.board.title'), desc: '', icon: LayoutPanelTop },
       { key: 'prod:assets', label: t('episode.prod.assets'), desc: '', icon: Users },
+      { key: 'prod:board', label: t('episode.board.title'), desc: '', icon: LayoutPanelTop },
       { key: 'prod:videos', label: t('episode.prod.videos'), desc: '', icon: Clapperboard },
     ],
   },
@@ -2559,7 +2559,7 @@ function sectionState(sectionId) {
   if (sectionId === 'export') return 'none'
   const done = sectionId === 'script'
     ? mainStageDone('script')
-    : mainStageDone('board') && mainStageDone('assets') && mainStageDone('videos')
+    : mainStageDone('assets') && mainStageDone('board') && mainStageDone('videos')
   if (done) return 'done'
 
   const hasProgress = sectionId === 'script'
@@ -2626,8 +2626,8 @@ const activeSubStepKey = computed(() => {
 // 步骤跑马灯：四段主流程（剧本 → 资产制作 → 视频制作 → 导出），段点击跳转、当前段流动光效
 const mainProgressSteps = computed(() => [
   { id: 'script', label: t('episode.stage.script') },
-  { id: 'board', label: t('episode.board.title') },
   { id: 'assets', label: t('episode.prod.assets') },
+  { id: 'board', label: t('episode.board.title') },
   { id: 'videos', label: t('episode.stage.videos') },
   { id: 'export', label: t('episode.stage.export') },
 ])

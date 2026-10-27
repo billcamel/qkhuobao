@@ -26,6 +26,12 @@
       </div>
     </div>
 
+    <!-- 资产先行：设定图是故事板出图的参考，缺图时提醒（不拦截） -->
+    <div v-if="missingAssets.length" class="board-asset-banner">
+      <span>{{ t('episode.board.missingAssets', { n: missingAssets.length, names: missingAssetNames }) }}</span>
+      <button type="button" class="link-btn" @click="emit('goto-assets')">{{ t('episode.ref.gotoGenerate') }}</button>
+    </div>
+
     <div v-if="!segments.length && running" class="step-loading">
       <Loader2 :size="24" class="animate-spin" style="color:var(--accent)" />
       <div class="loading-text">{{ progressLabel }}</div>
@@ -290,6 +296,24 @@ const groups = computed(() => {
   return [...map.values()]
 })
 
+/** 缺设定图的资产：已有故事板时只看各段绑定的素材，否则看本集全部资产 */
+const missingAssets = computed(() => {
+  const segs = segments.value
+  const bound = (kind, id) => !segs.length || segs.some(s =>
+    kind === 'scene' ? s.scene_id === id
+      : kind === 'character' ? (s.character_ids || []).includes(id)
+        : (s.prop_ids || []).includes(id))
+  return [
+    ...props.characters.filter(c => !c.image_url && bound('character', c.id)).map(c => c.name),
+    ...props.scenes.filter(s => !s.image_url && bound('scene', s.id)).map(s => s.location),
+    ...props.propItems.filter(p => !p.image_url && bound('prop', p.id)).map(p => p.name),
+  ].filter(Boolean)
+})
+const missingAssetNames = computed(() => {
+  const names = missingAssets.value
+  return names.slice(0, 4).join(t('common.listJoin')) + (names.length > 4 ? '…' : '')
+})
+
 const totalSeconds = computed(() => segments.value.reduce((s, x) => s + Number(x.duration || 0), 0))
 const approvedCount = computed(() => segments.value.filter(s => s.status === 'approved').length)
 const missingImageIds = computed(() => segments.value.filter(s => !s.imageUrl && !isGenerating(s.id)).map(s => s.id))
@@ -454,6 +478,7 @@ async function saveEdit() {
 <style scoped>
 .board-panel { display: flex; flex-direction: column; min-height: 0; }
 .board-ref-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); margin-right: 6px; cursor: pointer; }
+.board-asset-banner { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 12px; border-radius: var(--radius); background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); font-size: 12.5px; }
 .board-scroll { flex: 1; overflow: auto; padding: 4px 2px 24px; display: flex; flex-direction: column; gap: 18px; }
 .board-scene { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
 .board-scene-head { display: flex; flex-direction: column; gap: 4px; }
