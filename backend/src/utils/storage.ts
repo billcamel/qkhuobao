@@ -18,14 +18,33 @@ export async function downloadFile(url: string, subDir: string): Promise<string>
   const filename = `${uuid()}${ext}`
   const filePath = path.join(dir, filename)
 
-  const resp = await fetch(url)
-  if (!resp.ok) throw new Error(`Download failed: ${resp.status}`)
-
-  const buffer = Buffer.from(await resp.arrayBuffer())
+  const buffer = await fetchWithRetry(url)
   fs.writeFileSync(filePath, buffer)
 
   // 返回相对路径（供 API 返回给前端）
   return `static/${subDir}/${filename}`
+}
+
+/** 下载重试间隔：生成结果已计费，下载是幂等的，连接超时/5xx 时重试避免丢图 */
+export const DOWNLOAD_RETRY_DELAYS_MS = [2000, 5000, 10000]
+
+/** 下载远程文件；网络错误与 5xx/429 按 DOWNLOAD_RETRY_DELAYS_MS 重试，4xx 直接失败 */
+export async function fetchWithRetry(url: string, delays: number[] = DOWNLOAD_RETRY_DELAYS_MS): Promise<Buffer> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const resp = await fetch(url)
+      if (resp.ok) return Buffer.from(await resp.arrayBuffer())
+      const retryable = resp.status >= 500 || resp.status === 429
+      lastError = new Error(`Download failed: ${resp.status}`)
+      if (!retryable) throw lastError
+    } catch (err) {
+      lastError = err
+      if (err instanceof Error && /^Download failed: 4\d\d$/.test(err.message) && !/429/.test(err.message)) throw err
+    }
+    if (attempt < delays.length) await new Promise(r => setTimeout(r, delays[attempt]))
+  }
+  throw lastError instanceof Error ? lastError : new Error('Download failed')
 }
 
 /**

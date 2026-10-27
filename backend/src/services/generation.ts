@@ -489,6 +489,14 @@ async function handleImageCompleteBase64(record: SysTaskRecord, base64Data: stri
 // 图片完成后回写业务表：分镜(按 frameType)、角色、场景、道具
 async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
   const params = parseTaskParams(record.params)
+  if (params.frameType === 'board_clean') {
+    // 净版关键帧图：只回写版本，不改变当前故事板图与审核状态
+    if (params.boardVersionId) {
+      await db.update(schema.storyboardBoardVersions).set({ cleanImageUrl: localPath })
+        .where(eq(schema.storyboardBoardVersions.id, Number(params.boardVersionId)))
+    }
+    return
+  }
   if (params.frameType === 'board' && record.storyboardId) {
     // 故事板图：回写版本，并设为该段当前故事板（待审核）
     if (params.boardVersionId) {

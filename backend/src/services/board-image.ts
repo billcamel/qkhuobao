@@ -6,6 +6,7 @@
 import { desc, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { now } from '../utils/response.js'
+import { logTaskWarn } from '../utils/task-logger.js'
 import { getContentLanguage, type ContentLanguage } from './app-settings.js'
 import { boardPanels, parseBoard, type Board, type BoardBeat, type BoardShot } from './board.js'
 import { generateImage } from './generation.js'
@@ -186,6 +187,11 @@ export async function generateBoardImage(storyboardId: number, opts: { configId?
   return { versionId, taskId }
 }
 
+async function cleanTaskStatus(taskId: number) {
+  const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, taskId))
+  return task?.status === 'failed' ? 'failed' : 'processing'
+}
+
 /** 版本列表（附生图任务状态） */
 export async function listBoardVersions(storyboardId: number) {
   const versions = await db.select().from(schema.storyboardBoardVersions)
@@ -201,6 +207,8 @@ export async function listBoardVersions(storyboardId: number) {
       prompt: v.prompt,
       status: v.imageUrl ? 'completed' : task?.status === 'failed' ? 'failed' : 'processing',
       error: task?.status === 'failed' ? task.errorMsg : null,
+      clean_image_url: v.cleanImageUrl,
+      clean_status: v.cleanImageUrl ? 'completed' : v.cleanTaskId ? (await cleanTaskStatus(v.cleanTaskId)) : 'none',
       created_at: v.createdAt,
     })
   }
@@ -217,11 +225,81 @@ export async function selectBoardVersion(storyboardId: number, versionId: number
   }).where(eq(schema.storyboards.id, storyboardId))
 }
 
+// ─── 净版关键帧图（视频参考用） ─────────────────────────────────────
+// 实测：带文字/箭头的故事板直接喂给视频模型，构图约束很好，但箭头等标注会被画进视频开头。
+// 因此视频参考改用净版：以故事板图为参考做编辑，只保留画格画面，去掉所有制作标注。
+
+/** 净版画幅：画格横向等宽拼接（每格 16:9），4 格改 2×2，宽度不超过 4096 */
+export function cleanBoardSize(panels: number) {
+  if (panels <= 1) return '1920x1080'
+  if (panels === 2) return '3200x900'
+  if (panels === 3) return '3840x720'
+  return '2560x1440'
+}
+
+export function buildCleanBoardPrompt(panels: number) {
+  const layout = panels <= 1
+    ? '只输出这一格画面，铺满整张图'
+    : panels === 4
+      ? '把 4 格画面按原顺序排成 2×2 网格（左上、右上、左下、右下），格与格之间没有间隙'
+      : `把 ${panels} 格画面按原顺序从左到右等宽横向并排，格与格之间没有间隙`
+  return [
+    '参考图是一张电影分镜故事板。请只保留其中的画格画面内容，生成一张干净的关键帧拼图。',
+    `${layout}。`,
+    '画面中的人物、服装、道具、场景、构图、机位、光线与色调必须与参考图中对应画格完全一致。',
+    '彻底去掉所有文字、标题、标题栏、Shot 时间框、图例、红色和蓝色箭头、箭头旁的文字、CUT 标记、浅蓝色横条、边框和白色背景；画面里不能出现任何文字、箭头或标注。',
+  ].join('\n')
+}
+
+/** 为某个已出图版本生成净版关键帧图（已生成或生成中则跳过）；返回生图任务 ID 或 null */
+export async function generateCleanBoardImage(versionId: number, opts: { configId?: number; model?: string } = {}) {
+  const [v] = await db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.id, versionId))
+  if (!v?.imageUrl || v.cleanImageUrl) return null
+  if (v.cleanTaskId) {
+    const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, v.cleanTaskId))
+    if (task?.status === 'processing') return null
+  }
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, v.storyboardId))
+  const board = parseBoard(sb?.board)
+  if (!sb || !board) return null
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
+  const panels = boardPanels(board).length
+  const taskId = await generateImage({
+    storyboardId: sb.id,
+    dramaId: ep?.dramaId,
+    prompt: buildCleanBoardPrompt(panels),
+    model: opts.model,
+    size: cleanBoardSize(panels),
+    referenceImages: [v.imageUrl],
+    frameType: 'board_clean',
+    boardVersionId: v.id,
+    configId: opts.configId ?? ep?.imageConfigId ?? undefined,
+  })
+  await db.update(schema.storyboardBoardVersions).set({ cleanTaskId: taskId }).where(eq(schema.storyboardBoardVersions.id, v.id))
+  return taskId
+}
+
+/** 视频参考用的故事板图：当前版本的净版（未生成时返回 null，调用方不挂故事板参考，避免标注泄漏） */
+export async function videoReferenceBoardImage(storyboardId: number): Promise<string | null> {
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId))
+  if (!sb?.boardVersionId) return null
+  const [v] = await db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.id, sb.boardVersionId))
+  return v?.cleanImageUrl || null
+}
+
 export const BOARD_REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const
 
+/** 审核故事板；审核通过时自动为当前版本生成净版关键帧图（供视频参考） */
 export async function reviewBoard(storyboardId: number, status: typeof BOARD_REVIEW_STATUSES[number]) {
   const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId))
   if (!sb) throw new Error('分镜不存在')
   if (!sb.board) throw new Error('该分镜还没有故事板')
   await db.update(schema.storyboards).set({ boardStatus: status, updatedAt: now() }).where(eq(schema.storyboards.id, storyboardId))
+  if (status === 'approved' && sb.boardVersionId) {
+    try {
+      await generateCleanBoardImage(sb.boardVersionId)
+    } catch (err: any) {
+      logTaskWarn('BoardImage', 'clean-generate-failed', { storyboardId, error: err?.message })
+    }
+  }
 }

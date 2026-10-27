@@ -900,7 +900,7 @@
       "stat": "{scenes} 场景 · {n} 段 · {dur}s",
       "approvedStat": "已通过 {done}/{total}",
       "reference": "视频参考故事板图",
-      "referenceHint": "生成视频时把当前故事板图作为第 1 张参考图，约束镜头顺序、构图、动作与运镜",
+      "referenceHint": "生成视频时把审核通过的故事板「净版关键帧图」（去掉文字和箭头）作为第 1 张参考图，约束每个镜头的构图、站位与场景布置",
       "generate": "生成故事板",
       "regenerate": "重新生成故事板",
       "batchImages": "批量出图({n})",
@@ -952,7 +952,14 @@
       "phaseDesign": "正在设计故事板…",
       "unapprovedLabel": "故事板未审核",
       "unapprovedCount": "{n} 段",
-      "unapprovedConfirm": "这一段的故事板还没有审核通过，仍要生成视频吗？"
+      "unapprovedConfirm": "这一段的故事板还没有审核通过，仍要生成视频吗？",
+      "cleanHint": "审核通过后自动生成：去掉文字、箭头等标注，只保留画格画面，避免标注被画进视频",
+      "retry": "重试",
+      "clean": {
+        "processing": "视频参考图生成中…",
+        "completed": "视频参考图已就绪",
+        "failed": "视频参考图生成失败"
+      }
     }
   },
   "errors": {

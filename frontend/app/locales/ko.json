@@ -900,7 +900,7 @@
       "stat": "{scenes} 장면 · {n} 구간 · {dur}s",
       "approvedStat": "승인 {done}/{total}",
       "reference": "비디오에서 보드 참조",
-      "referenceHint": "비디오 생성 시 현재 스토리보드 이미지를 첫 번째 참조 이미지로 보내 컷 순서, 구도, 동작, 카메라 워크를 제약합니다",
+      "referenceHint": "비디오 생성 시 승인된 스토리보드의 「클린 키프레임 이미지」(글자와 화살표 제거)를 첫 번째 참조 이미지로 보내 각 컷의 구도, 동선, 세트를 제약합니다",
       "generate": "스토리보드 생성",
       "regenerate": "스토리보드 다시 생성",
       "batchImages": "일괄 이미지 생성({n})",
@@ -952,7 +952,14 @@
       "phaseDesign": "스토리보드 설계 중…",
       "unapprovedLabel": "미승인 보드",
       "unapprovedCount": "{n}개 구간",
-      "unapprovedConfirm": "이 구간의 스토리보드가 아직 승인되지 않았습니다. 그래도 비디오를 생성할까요?"
+      "unapprovedConfirm": "이 구간의 스토리보드가 아직 승인되지 않았습니다. 그래도 비디오를 생성할까요?",
+      "cleanHint": "승인 시 자동 생성: 글자, 화살표 등 주석을 제거해 비디오에 그려지지 않게 합니다",
+      "retry": "다시 시도",
+      "clean": {
+        "processing": "비디오 참조 이미지 생성 중…",
+        "completed": "비디오 참조 이미지 준비됨",
+        "failed": "비디오 참조 이미지 생성 실패"
+      }
     }
   },
   "errors": {

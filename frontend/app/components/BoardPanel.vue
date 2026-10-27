@@ -58,6 +58,10 @@
             <span v-if="sb.title" class="dim">{{ sb.title }}</span>
             <span v-if="sb.version" class="dim mono">{{ t('episode.board.versionN', { n: sb.version }) }}</span>
             <span :class="['tag', 'board-status', `is-${statusKey(sb)}`]">{{ t(`episode.board.status.${statusKey(sb)}`) }}</span>
+            <span v-if="sb.status === 'approved' && sb.cleanStatus !== 'none'" :class="['board-clean', `is-${sb.cleanStatus}`]" :title="t('episode.board.cleanHint')">
+              {{ t(`episode.board.clean.${sb.cleanStatus}`) }}
+              <button v-if="sb.cleanStatus === 'failed'" type="button" class="link-btn" @click="review(sb, 'approved')">{{ t('episode.board.retry') }}</button>
+            </span>
             <div class="ml-auto flex gap-1">
               <button class="btn btn-sm" :disabled="isGenerating(sb.id)" @click="genImage(sb)">
                 <Loader2 v-if="isGenerating(sb.id)" :size="11" class="animate-spin" />
@@ -264,6 +268,7 @@ const segments = computed(() => {
         versionId: sb.board_version_id || null,
         version: versionNumbers.value[sb.id]?.current || null,
         versionCount: versionNumbers.value[sb.id]?.count || (sb.board_image_url ? 1 : 0),
+        cleanStatus: versionNumbers.value[sb.id]?.clean || 'none',
         videoPrompt: sb.video_prompt || '',
         missingRefs,
       }
@@ -301,7 +306,7 @@ async function loadVersionInfo(id) {
     const list = await storyboardAPI.boardVersions(id) || []
     const sb = props.storyboards.find(s => s.id === id)
     const current = list.find(v => v.id === sb?.board_version_id)
-    versionNumbers.value = { ...versionNumbers.value, [id]: { count: list.filter(v => v.image_url).length, current: current?.version || null, list } }
+    versionNumbers.value = { ...versionNumbers.value, [id]: { count: list.filter(v => v.image_url).length, current: current?.version || null, clean: current?.clean_status || 'none', list } }
     return list
   } catch { return [] }
 }
@@ -372,7 +377,18 @@ async function review(seg, status) {
   try {
     await storyboardAPI.reviewBoard(seg.id, status)
     emit('refresh')
+    if (status === 'approved') followClean(seg.id)
   } catch (e) { toastError(e) }
+}
+
+// 审核通过后后端自动生成净版关键帧图（视频参考用），轮询到出图或失败
+async function followClean(id) {
+  for (let i = 0; i < 75; i++) {
+    await new Promise(r => setTimeout(r, 4000))
+    await loadVersionInfo(id)
+    const clean = versionNumbers.value[id]?.clean
+    if (clean && clean !== 'processing') return
+  }
 }
 
 // ─── 版本切换 ───
@@ -450,6 +466,9 @@ async function saveEdit() {
 .board-status.is-pending { color: var(--tag-info-text); background: var(--info-bg); }
 .board-status.is-rejected, .board-status.is-stale { color: var(--tag-warning-text); background: var(--warning-bg); }
 .board-approve { color: var(--tag-success-text); }
+.board-clean { font-size: 11.5px; color: var(--text-2); display: inline-flex; gap: 4px; align-items: center; }
+.board-clean.is-completed { color: var(--tag-success-text); }
+.board-clean.is-failed { color: var(--error); }
 .board-seg-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
 @media (max-width: 1100px) { .board-seg-body { grid-template-columns: 1fr; } }
 .board-image-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

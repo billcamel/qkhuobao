@@ -900,7 +900,7 @@
       "stat": "{scenes} scenes · {n} segments · {dur}s",
       "approvedStat": "Approved {done}/{total}",
       "reference": "Use board as video reference",
-      "referenceHint": "Send the current storyboard image as reference image 1 when generating video, to constrain shot order, composition, action, and camera",
+      "referenceHint": "Send the approved storyboard’s clean keyframe image (text and arrows removed) as reference image 1 when generating video, to constrain each shot’s composition, blocking, and set",
       "generate": "Generate storyboard",
       "regenerate": "Regenerate storyboard",
       "batchImages": "Generate images ({n})",
@@ -952,7 +952,14 @@
       "phaseDesign": "Designing storyboard…",
       "unapprovedLabel": "Unapproved boards",
       "unapprovedCount": "{n} segment(s)",
-      "unapprovedConfirm": "This segment’s storyboard is not approved yet. Generate the video anyway?"
+      "unapprovedConfirm": "This segment’s storyboard is not approved yet. Generate the video anyway?",
+      "cleanHint": "Generated automatically on approval: annotations such as text and arrows are removed so they are not drawn into the video",
+      "retry": "Retry",
+      "clean": {
+        "processing": "Video reference generating…",
+        "completed": "Video reference ready",
+        "failed": "Video reference failed"
+      }
     }
   },
   "errors": {

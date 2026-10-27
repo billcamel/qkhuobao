@@ -325,6 +325,8 @@ export const sqliteSchemaStatements = [
     task_id INTEGER,
     image_url TEXT,
     prompt TEXT NOT NULL,
+    clean_task_id INTEGER,
+    clean_image_url TEXT,
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_storyboard_board_versions_sb ON storyboard_board_versions (storyboard_id)`,
@@ -457,6 +459,7 @@ export function initSqliteSchema(sqlite: Database.Database) {
     script_scene: 'TEXT', board: 'TEXT', board_status: 'TEXT', board_image_url: 'TEXT', board_version_id: 'INTEGER',
   })
   addMissingColumns(sqlite, 'episodes', { board_reference: 'INTEGER DEFAULT 1' })
+  addMissingColumns(sqlite, 'storyboard_board_versions', { clean_task_id: 'INTEGER', clean_image_url: 'TEXT' })
   const insertSeed = sqlite.prepare(SEED_SQL)
   const upgradeSeed = sqlite.prepare(UPGRADE_SQL)
   const removeSeed = sqlite.prepare(REMOVE_SQL)

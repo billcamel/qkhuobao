@@ -38,7 +38,7 @@ await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 const base = `http://127.0.0.1:${(server.address() as any).port}`
 
 const { db, schema } = await import('../src/db/index.ts')
-const { generateBoardImage, listBoardVersions } = await import('../src/services/board-image.ts')
+const { generateBoardImage, listBoardVersions, reviewBoard, videoReferenceBoardImage } = await import('../src/services/board-image.ts')
 
 const ts = new Date().toISOString()
 db.insert(schema.aiServiceConfigs).values({ serviceType: 'image', provider: 'volcengine', name: 'mock', baseUrl: base, apiKey: 'k', model: '["doubao-seedream-test"]', isActive: true, priority: 1, createdAt: ts, updatedAt: ts }).run()
@@ -83,5 +83,32 @@ test('board image: Seedream request carries size and reference images; result be
   assert.equal(fresh.composedImage, null) // 故事板图不覆盖分镜合成图
   const versions = await listBoardVersions(sb.id)
   assert.deepEqual(versions.map(v => [v.version, v.status]), [[1, 'completed']])
+})
+
+test('approving a board generates a clean keyframe image used as the video reference', async () => {
+  const [sb0] = db.select().from(schema.storyboards).all()
+  assert.equal(await videoReferenceBoardImage(sb0.id), null) // 净版未生成前不挂故事板参考
+  await reviewBoard(sb0.id, 'approved')
+  const version = db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.storyboardId, sb0.id)).get()!
+  assert.ok(version.cleanTaskId)
+  const deadline = Date.now() + 15000
+  let task
+  while (Date.now() < deadline) {
+    task = db.select().from(schema.sysTask).where(eq(schema.sysTask.id, version.cleanTaskId!)).get()
+    if (task?.status !== 'processing') break
+    await new Promise(r => setTimeout(r, 20))
+  }
+  assert.equal(task?.status, 'completed', task?.errorMsg || '')
+  const body = requests[1]
+  assert.equal(body.size, '3840x720') // 3 格横向拼接
+  assert.equal(typeof body.image, 'string') // 只参考故事板图本身
+  assert.match(body.prompt, /彻底去掉所有文字/)
+  const fresh = db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.id, version.id)).get()!
+  assert.match(fresh.cleanImageUrl!, /^static\/images\//)
+  assert.equal(await videoReferenceBoardImage(sb0.id), fresh.cleanImageUrl)
+  // 净版不改变当前故事板图与审核状态
+  const sbAfter = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb0.id)).get()!
+  assert.equal(sbAfter.boardImageUrl, version.imageUrl)
+  assert.equal(sbAfter.boardStatus, 'approved')
   server.close()
 })

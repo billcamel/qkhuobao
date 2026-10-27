@@ -183,3 +183,26 @@ test('API keys with non-ASCII or whitespace are rejected with a readable message
   assert.ok(apiKeyProblem('ab湘江战役')!.length <= 40) // 前端只原样透传 40 字以内的中文提示
   assert.throws(() => assertUsableApiKey({ apiKey: '中文' }), /重新填写/)
 })
+
+test('image download retries transient failures but not 4xx', async () => {
+  const http = await import('node:http')
+  const { fetchWithRetry } = await import('../src/utils/storage.ts')
+  let hits = 0
+  const server = http.createServer((req, res) => {
+    hits++
+    if (req.url === '/missing') { res.writeHead(404).end(); return }
+    if (hits <= 2) { res.writeHead(503).end(); return }
+    res.end('ok-image')
+  })
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${(server.address() as any).port}`
+  const buf = await fetchWithRetry(`${base}/img`, [1, 1, 1])
+  assert.equal(buf.toString(), 'ok-image')
+  assert.equal(hits, 3)
+  hits = 0
+  await assert.rejects(fetchWithRetry(`${base}/missing`, [1, 1, 1]), /404/)
+  assert.equal(hits, 1)
+  // 连接失败（端口无人监听）重试后仍失败则抛出
+  server.close()
+  await assert.rejects(fetchWithRetry(`${base}/img`, [1, 1]))
+})

@@ -165,6 +165,9 @@ export const storyboardBoardVersions = sqliteTable('storyboard_board_versions', 
   taskId: integer('task_id'),
   imageUrl: text('image_url'),
   prompt: text('prompt').notNull(),
+  // 净版关键帧图：去掉文字/箭头/横条，只保留画格画面，供视频生成参考（避免标注被画进视频）
+  cleanTaskId: integer('clean_task_id'),
+  cleanImageUrl: text('clean_image_url'),
   createdAt: text('created_at').notNull(),
 })
 
