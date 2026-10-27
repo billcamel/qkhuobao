@@ -4,7 +4,7 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { success, notFound, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { joinProviderUrl } from '../services/adapters/url.js'
-import { isOfficialProvider, parseConfigTemperature } from '../services/ai.js'
+import { apiKeyProblem, isOfficialProvider, parseConfigTemperature } from '../services/ai.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -147,6 +147,10 @@ app.post('/', async (c) => {
     }
   }
 
+  if (typeof body.api_key === 'string') body.api_key = body.api_key.trim()
+  const keyProblem = apiKeyProblem(body.api_key)
+  if (keyProblem) return badRequest(c, keyProblem)
+
   const res = await db.insert(schema.aiServiceConfigs).values({
     serviceType: body.service_type,
     provider: body.provider,
@@ -176,6 +180,10 @@ app.post('/test', async (c) => {
   if (!isOfficialProvider(body.service_type, body.provider)) {
     return badRequest(c, '不支持的 service_type/provider')
   }
+
+  if (typeof body.api_key === 'string') body.api_key = body.api_key.trim()
+  const keyProblem = apiKeyProblem(body.api_key)
+  if (keyProblem) return badRequest(c, keyProblem)
 
   const model = Array.isArray(body.model) ? body.model[0] : body.model
   const probe = buildProbe(body.service_type, body.provider, body.base_url, model, body.api_key)
@@ -266,7 +274,12 @@ app.put('/:id', async (c) => {
   if ('provider' in body) updates.provider = body.provider
   if ('name' in body) updates.name = body.name
   if ('base_url' in body) updates.baseUrl = body.base_url
-  if ('api_key' in body) updates.apiKey = body.api_key
+  if ('api_key' in body) {
+    const key = typeof body.api_key === 'string' ? body.api_key.trim() : body.api_key
+    const keyProblem = apiKeyProblem(key)
+    if (keyProblem) return badRequest(c, keyProblem)
+    updates.apiKey = key
+  }
   if ('model' in body) updates.model = JSON.stringify(body.model)
   if ('priority' in body) updates.priority = body.priority
   if ('is_active' in body) updates.isActive = body.is_active

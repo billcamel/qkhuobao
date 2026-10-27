@@ -7,7 +7,7 @@ import { and, desc, eq, gt } from 'drizzle-orm'
 import fs from 'node:fs'
 import { getAbsolutePath } from '../utils/storage.js'
 import { downloadVideo, safeTaskError } from './video-download.js'
-import { getActiveConfig, getConfigById } from './ai.js'
+import { assertUsableApiKey, getActiveConfig, getConfigById } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
@@ -232,6 +232,7 @@ async function processTask(id: number, config: AIConfig) {
     })
 
     let url: string, method: string, headers: Record<string, string>, body: unknown
+    assertUsableApiKey(config)
 
     if (type === 'image') {
       const adapter = getImageAdapter(config.provider)

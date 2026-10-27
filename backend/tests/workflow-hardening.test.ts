@@ -173,3 +173,13 @@ test('calledTools normalizes Mastra tool keys to tool ids', async () => {
   const result = { steps: [{ toolCalls: [{ payload: { toolName: 'readEpisodeScript' } }] }, { toolCalls: [{ toolName: 'saveScript' }] }] }
   assert.deepEqual(calledTools(result).sort(), ['read_episode_script', 'save_script'])
 })
+
+test('API keys with non-ASCII or whitespace are rejected with a readable message', async () => {
+  const { apiKeyProblem, assertUsableApiKey } = await import('../src/services/ai.ts')
+  assert.equal(apiKeyProblem('sk-abc_123.XYZ'), null)
+  assert.equal(apiKeyProblem(''), null)
+  assert.match(apiKeyProblem('ab湘江战役')!, /非法字符/)
+  assert.match(apiKeyProblem('sk abc')!, /非法字符/)
+  assert.ok(apiKeyProblem('ab湘江战役')!.length <= 40) // 前端只原样透传 40 字以内的中文提示
+  assert.throws(() => assertUsableApiKey({ apiKey: '中文' }), /重新填写/)
+})

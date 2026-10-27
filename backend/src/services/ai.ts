@@ -18,6 +18,23 @@ export interface AIConfig {
   temperature?: number | null
 }
 
+/**
+ * API Key 只能是可打印 ASCII（不含空白）：粘贴错内容（如带中文的提示词）时，
+ * fetch 构造请求头会抛出难懂的 ByteString 错误，这里提前给出可操作的提示
+ */
+export function apiKeyProblem(apiKey: string | null | undefined): string | null {
+  const key = String(apiKey || '')
+  if (!key) return null
+  if (/[^\x21-\x7e]/.test(key)) return 'API Key 含中文或空格等非法字符，可能粘贴错了，请到设置页重新填写'
+  return null
+}
+
+/** 生成前校验配置的 API Key，有问题直接抛出友好错误 */
+export function assertUsableApiKey(config: Pick<AIConfig, 'apiKey'> & { name?: string }) {
+  const problem = apiKeyProblem(config.apiKey)
+  if (problem) throw new Error(problem)
+}
+
 /** 从 settings JSON 解析 temperature；非法值一律视为未设置 */
 export function parseConfigTemperature(settingsRaw: string | null | undefined): number | null {
   if (!settingsRaw) return null
