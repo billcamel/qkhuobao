@@ -12,14 +12,14 @@ The storyboard turns a script scene into an executable plan: it constrains the l
 | Level | Meaning | Rules |
 |---|---|---|
 | Script scene | `## S01 \| INT. · location \| time` in the script | One script scene becomes 1 or more segments; write a one-line scene purpose (summary), e.g. "Sacrifice · faith at its limit: badly wounded and captured, he keeps his resolve" |
-| Segment | One video generation | **4-15 seconds**, happens in a single scene (scene_id); **at most 4 panels** — split into the next segment beyond that |
+| Segment | One video generation | **5-15 seconds**, happens in a single scene (scene_id); **at most 4 panels** — split into the next segment beyond that |
 | Shot | A new shot number = a hard cut | Each shot has shot size, angle, camera movement, purpose, and in-segment start/end seconds; the timeline is contiguous and the last shot's end = segment duration |
 | Beat | Continuous action within one shot, codes 1A/1B/1C | A/B/C of the same shot do not cut — the action or camera just continues; **one beat = one panel on the board**; 1-3 beats per shot |
 
 ## Splitting Segments
 
 1. **Beats of the story**: split at emotional and narrative turns (setup, trigger, confrontation, eruption, aftermath); prefer cutting at beat boundaries and keep a causal chain (setup-event-reaction) in one segment
-2. **Total volume**: target total duration ≈ script length ÷ 500 characters/minute (≈ 150 words/minute in English); establishing/opening shots 4-6 s, narrative segments 8-12 s, emotional peaks 12-15 s at a slower pace
+2. **Total volume**: target total duration ≈ script length ÷ 500 characters/minute (≈ 150 words/minute in English); establishing/opening shots 5-6 s, narrative segments 8-12 s, emotional peaks 12-15 s at a slower pace
 3. **Dialogue floor**: segment duration ≥ spoken dialogue and narration time + 2 seconds of performance headroom; split if it does not fit
 4. **Continuity**: write "segment start" (start_state) and "segment end" (end_state) for every segment — each a visible state (who is where, doing what, under what light); the next segment's start must pick up the previous segment's end
 

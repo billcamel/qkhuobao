@@ -48,7 +48,7 @@ test('checkBoard: contiguous timeline, beat codes, panel limit, duration range',
   broken.shots[1].start = 6
   broken.shots[1].beats[1].code = '2C'
   const w = board.checkBoard(broken, 20, 2)
-  assert.ok(w.some(x => /4-15/.test(x)))
+  assert.ok(w.some(x => /5-15/.test(x)))
   assert.ok(w.some(x => /应从 5 秒开始/.test(x)))
   assert.ok(w.some(x => /拍号应为 2B/.test(x)))
   assert.ok(w.some(x => /与段时长 20 秒不一致/.test(x)))
@@ -65,9 +65,13 @@ test('board derives description and shot-timed video prompt with @ references', 
   const vp = board.boardToVideoPrompt(sample, { scene: '指挥所', characters: ['陈将军'], props: [] }, '油灯昏黄', 'zh')
   const lines = vp.split('\n')
   assert.equal(lines[0], '出场人物：@陈将军；场景：@指挥所。')
-  assert.match(lines[1], /^0-5秒：中景，斜对地图桌，齐胸高，固定。油灯火苗微跳，@陈将军俯身于地图前/)
-  assert.match(lines[2], /^5-11秒：切到特写，俯向桌面，缓慢推近。/)
-  assert.equal(lines[3], '氛围：油灯昏黄。')
+  // 段首段尾状态是衔接约束：开场画面在时间轴前、结尾画面在时间轴后
+  assert.equal(lines[1], '开场画面（承接上一段）：深夜@指挥所，油灯照亮地图，@陈将军俯身桌前。')
+  assert.match(lines[2], /^0-5秒：中景，斜对地图桌，齐胸高，固定。油灯火苗微跳，@陈将军俯身于地图前/)
+  assert.match(lines[3], /^5-11秒：切到特写，俯向桌面，缓慢推近。/)
+  assert.equal(lines[4], '结尾画面（交给下一段）：@陈将军抬眼凝视，久久不语。')
+  assert.equal(lines[5], '氛围：油灯昏黄。')
+  assert.equal(board.boardPanelGuide(sample), '第1格=1A（0-5秒，中景），第2格=2A（5-11秒，特写），第3格=2B（5-11秒内的后续动作，特写）')
   assert.equal(board.tagRefNames('@陈将军与陈将军', ['陈将军']), '@陈将军与@陈将军')
 })
 
@@ -103,7 +107,7 @@ test('save_boards stores boards per script scene, derives fields, snapshots on r
   // 未知场景号与超时长给出 warnings
   const bad = await storyboardTools.saveBoards.execute!({ script_scene: { no: 'S09', summary: 'x' }, segments: [{ ...seg, shot_number: 2, duration: 20 }] }, ctx) as any
   assert.ok(bad.warnings.some((w: string) => /没有场景 S09/.test(w)))
-  assert.ok(bad.warnings.some((w: string) => /4-15/.test(w)))
+  assert.ok(bad.warnings.some((w: string) => /5-15/.test(w)))
 
   // 重新生成：旧分镜与剧本场景分组进入快照，恢复后都回来
   await storyboardTools.saveBoards.execute!({ replace_existing: true, script_scene: { no: 'S01', summary: '空镜' }, segments: [{ ...seg, shot_number: 1, scene_id: null, character_ids: [] }] }, ctx)
@@ -166,4 +170,45 @@ test('board versions, selection and review', async () => {
   assert.equal(fresh.boardImageUrl, 'static/b1.png')
   assert.equal(fresh.boardStatus, 'approved')
   await assert.rejects(boardImage.selectBoardVersion(sb.id, versions[0].id), /还没有出图/)
+})
+
+test('video request: board constrains video only when approved and the clean keyframe is ready', async () => {
+  const vr = await import('../src/services/video-request.ts')
+  const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.storyboardNumber, 1)).all()
+  // 当前版本补一张净版
+  db.update(schema.storyboardBoardVersions).set({ cleanImageUrl: 'static/clean.png' }).where(eq(schema.storyboardBoardVersions.id, sb.boardVersionId!)).run()
+
+  const approved = await vr.buildStoryboardVideoInput(sb.id, { provider: 'volcengine' })
+  assert.equal(approved!.boardState, 'used')
+  assert.deepEqual(approved!.references.map(r => [r.index, r.imageUrl]), [[1, 'static/clean.png'], [2, 'static/post.png'], [3, 'static/chen.png']])
+  assert.match(approved!.prompt, /^@图片1 是本段各镜头的关键画面（多格按镜头顺序从左到右排列：第1格=1A（0-5秒，中景）/)
+  assert.match(approved!.prompt, /@图片3陈将军/) // 净版占第 1 位，角色顺延
+  assert.equal(approved!.duration, 11) // 时长以故事板时间轴为准
+
+  // 审核后改了文字（回到 draft）：不再用旧净版，避免参考图与提示词矛盾
+  db.update(schema.storyboards).set({ boardStatus: 'draft' }).where(eq(schema.storyboards.id, sb.id)).run()
+  const draft = await vr.buildStoryboardVideoInput(sb.id, { provider: 'volcengine' })
+  assert.equal(draft!.boardState, 'not_approved')
+  assert.equal(draft!.references[0].imageUrl, 'static/post.png')
+  assert.doesNotMatch(draft!.prompt, /关键画面/)
+
+  // 审核通过但净版未就绪 / 集开关关闭
+  db.update(schema.storyboards).set({ boardStatus: 'approved' }).where(eq(schema.storyboards.id, sb.id)).run()
+  db.update(schema.storyboardBoardVersions).set({ cleanImageUrl: null }).where(eq(schema.storyboardBoardVersions.id, sb.boardVersionId!)).run()
+  assert.equal((await vr.buildStoryboardVideoInput(sb.id, {}))!.boardState, 'clean_missing')
+  db.update(schema.episodes).set({ boardReference: false }).where(eq(schema.episodes.id, episode.id)).run()
+  assert.equal((await vr.buildStoryboardVideoInput(sb.id, {}))!.boardState, 'off')
+  db.update(schema.episodes).set({ boardReference: true }).where(eq(schema.episodes.id, episode.id)).run()
+})
+
+test('regenerating a board segment video prompt re-derives from the board without the LLM', async () => {
+  const { generateStoryboardVideoPrompt } = await import('../src/services/video-prompts.ts')
+  const [sb] = db.select().from(schema.storyboards).where(eq(schema.storyboards.storyboardNumber, 1)).all()
+  db.update(schema.storyboards).set({ videoPrompt: '被手工改乱的提示词' }).where(eq(schema.storyboards.id, sb.id)).run()
+  const fresh = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb.id)).get()!
+  const prompt = await generateStoryboardVideoPrompt(fresh, drama.id)
+  assert.match(prompt, /^出场人物：@陈将军；场景：@指挥所。\n开场画面/)
+  const after = db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb.id)).get()!
+  assert.equal(after.videoPrompt, prompt)
+  assert.equal(after.boardStatus, 'approved') // 只重推导文本，不动审核状态
 })

@@ -322,7 +322,7 @@ export async function generateCleanBoardImage(versionId: number, opts: { configI
 /** 视频参考用的故事板图：当前版本的净版（未生成时返回 null，调用方不挂故事板参考，避免标注泄漏） */
 export async function videoReferenceBoardImage(storyboardId: number): Promise<string | null> {
   const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId))
-  if (!sb?.boardVersionId) return null
+  if (!sb?.boardVersionId || sb.boardStatus !== 'approved') return null
   const [v] = await db.select().from(schema.storyboardBoardVersions).where(eq(schema.storyboardBoardVersions.id, sb.boardVersionId))
   return v?.cleanImageUrl || null
 }

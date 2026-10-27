@@ -6,7 +6,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { now } from '../utils/response.js'
 import { getContentLanguage } from './app-settings.js'
-import { boardToDescription, boardToVideoPrompt, checkBoard, type Board } from './board.js'
+import { boardToDescription, boardToVideoPrompt, checkBoard, parseBoard, type Board } from './board.js'
 
 export interface ScriptSceneInfo {
   no: string
@@ -120,4 +120,27 @@ export async function recomputeEpisodeDuration(episodeId: number) {
   const total = rows.filter(r => !r.deletedAt).reduce((sum, r) => sum + (r.duration || 0), 0)
   await db.update(schema.episodes).set({ duration: Math.ceil(total / 60), updatedAt: now() }).where(eq(schema.episodes.id, episodeId))
   return total
+}
+
+/**
+ * 按当前故事板与绑定重新推导 description / video_prompt（不改审核状态）。
+ * 用于故事板段的「重新生成视频提示词」：结果与故事板严格一致，不经大模型改写
+ */
+export async function rederiveBoardText(storyboardId: number): Promise<string | null> {
+  const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboardId))
+  const board = parseBoard(sb?.board)
+  if (!sb || !board) return null
+  const characterIds = (await db.select().from(schema.storyboardCharacters)
+    .where(eq(schema.storyboardCharacters.storyboardId, storyboardId))).map(l => l.characterId)
+  const propIds = (await db.select().from(schema.storyboardProps)
+    .where(eq(schema.storyboardProps.storyboardId, storyboardId))).map(l => l.propId)
+  const lang = getContentLanguage()
+  const refs = await refNamesFor(sb.sceneId, characterIds, propIds)
+  const videoPrompt = boardToVideoPrompt(board, refs, sb.atmosphere, lang)
+  await db.update(schema.storyboards).set({
+    description: boardToDescription(board, lang),
+    videoPrompt,
+    updatedAt: now(),
+  }).where(eq(schema.storyboards.id, storyboardId))
+  return videoPrompt
 }

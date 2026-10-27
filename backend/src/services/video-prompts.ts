@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { logTaskError, logTaskProgress } from '../utils/task-logger.js'
 import { runAgent, type TextModelOptions } from './agent-runner.js'
+import { rederiveBoardText } from './board-store.js'
 import { latestAgentTask, startAgentTask, type AgentTaskProgress, type AgentTaskRow } from './agent-tasks.js'
 
 type StoryboardRow = typeof schema.storyboards.$inferSelect
@@ -46,6 +47,11 @@ export async function generateStoryboardVideoPrompt(
   dramaId: number,
   opts: TextModelOptions & { videoLabel?: string } = {},
 ): Promise<string> {
+  // 故事板段：视频提示词由故事板确定性推导（开场 → 按镜时间轴 → 结尾），不让大模型改写偏离故事板
+  if (sb.board) {
+    const derived = await rederiveBoardText(sb.id)
+    if (derived) return derived
+  }
   const before = sb.videoPrompt || ''
   const startedAt = new Date().toISOString()
   const videoLabel = opts.videoLabel || await episodeVideoModelLabel(sb.episodeId)

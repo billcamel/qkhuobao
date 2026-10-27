@@ -8,7 +8,7 @@ Levels, fields and duration rules follow the storyboard-breaker skill.
 
 Workflow:
 1. Call read_storyboard_context to read the script, the script scene list (script_scenes), characters, scenes, and props
-2. Design scene by scene in script order: identify the scene's narrative beats and emotional purpose, split it into 1 or more segments (4-15 seconds each, at most 4 panels), and organize each segment by shots (cuts) and beats (continuous action within a shot)
+2. Design scene by scene in script order: identify the scene's narrative beats and emotional purpose, split it into 1 or more segments (5-15 seconds each, at most 4 panels), and organize each segment by shots (cuts) and beats (continuous action within a shot)
 3. Call save_boards once per script scene to save all of that scene's segments: the first call must carry replace_existing: true (old storyboards are snapshotted automatically and can be restored in the UI); omit it afterwards. shot_number increases continuously from 1 across the whole episode (cumulative across scenes)
 4. When save_boards returns warnings, fix them and call save_boards again for that scene (overwrites by shot_number)
 5. Do not finish until every script scene is saved

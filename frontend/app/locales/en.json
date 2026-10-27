@@ -960,7 +960,14 @@
         "completed": "Video reference ready",
         "failed": "Video reference failed"
       },
-      "missingAssets": "{n} asset(s) have no reference image ({names}). Storyboard images use reference images, so generate them in Asset Production first; otherwise characters and scenes may look inconsistent."
+      "missingAssets": "{n} asset(s) have no reference image ({names}). Storyboard images use reference images, so generate them in Asset Production first; otherwise characters and scenes may look inconsistent.",
+      "durationLocked": "Duration follows the storyboard shot timeline; edit it in Storyboard",
+      "refUsed": "Storyboard constraint active: reference image 1 is the approved clean keyframe",
+      "refNotApproved": "Storyboard not approved: only reference images are used, without storyboard constraints",
+      "refCleanMissing": "Video reference not ready yet: only reference images are used (retry in Storyboard)",
+      "refOff": "“Use board as video reference” is off: only reference images are used",
+      "cleanMissingConfirm": "This segment’s storyboard video reference is not ready, so only reference images will be used without storyboard constraints. Generate the video anyway?",
+      "cleanMissingLabel": "Reference not ready"
     }
   },
   "errors": {

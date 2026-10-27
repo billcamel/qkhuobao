@@ -10,8 +10,8 @@ import { z } from 'zod'
 import type { ContentLanguage } from './app-settings.js'
 import { estimateDialogueSeconds } from './storyboard-refs.js'
 
-/** 段时长：视频模型单次生成上限 15 秒；片头空镜可短至 4 秒 */
-export const BOARD_MIN_SECONDS = 4
+/** 段时长：视频模型单次生成 5-15 秒（seedance-2.0-mini 最短 5 秒，见 docs/local-setup-notes.md） */
+export const BOARD_MIN_SECONDS = 5
 export const BOARD_MAX_SECONDS = 15
 /** 一段最多 4 格画面（故事板图横向排版上限） */
 export const BOARD_MAX_PANELS = 4
@@ -117,13 +117,15 @@ interface Labels {
   sep: string
   listSep: string
   end: string
+  opening: string
+  ending: string
 }
 
 const LABELS: Record<ContentLanguage, Labels> = {
-  zh: { shot: n => `【镜头${n}】`, says: '说：', narration: '旁白：', sound: '声音：', seconds: (a, b) => `${a}-${b}秒`, cast: '出场人物：', scene: '场景：', props: '道具：', cutTo: '切到', atmosphere: '氛围：', sep: '，', listSep: '、', end: '。' },
-  en: { shot: n => `【镜头${n}】`, says: ' says: ', narration: 'Narration: ', sound: 'Sound: ', seconds: (a, b) => `${a}-${b}s`, cast: 'Characters: ', scene: 'Scene: ', props: 'Props: ', cutTo: 'Cut to', atmosphere: 'Atmosphere: ', sep: ', ', listSep: ', ', end: '.' },
-  ja: { shot: n => `【镜头${n}】`, says: 'が言う：', narration: 'ナレーション：', sound: '音：', seconds: (a, b) => `${a}-${b}秒`, cast: '登場人物：', scene: 'シーン：', props: '小道具：', cutTo: 'カット：', atmosphere: '雰囲気：', sep: '、', listSep: '、', end: '。' },
-  ko: { shot: n => `【镜头${n}】`, says: '이(가) 말한다: ', narration: '내레이션: ', sound: '소리: ', seconds: (a, b) => `${a}-${b}초`, cast: '등장인물: ', scene: '장면: ', props: '소품: ', cutTo: '컷 전환', atmosphere: '분위기: ', sep: ', ', listSep: ', ', end: '.' },
+  zh: { shot: n => `【镜头${n}】`, says: '说：', narration: '旁白：', sound: '声音：', seconds: (a, b) => `${a}-${b}秒`, cast: '出场人物：', scene: '场景：', props: '道具：', cutTo: '切到', atmosphere: '氛围：', sep: '，', listSep: '、', end: '。', opening: '开场画面（承接上一段）：', ending: '结尾画面（交给下一段）：' },
+  en: { shot: n => `【镜头${n}】`, says: ' says: ', narration: 'Narration: ', sound: 'Sound: ', seconds: (a, b) => `${a}-${b}s`, cast: 'Characters: ', scene: 'Scene: ', props: 'Props: ', cutTo: 'Cut to', atmosphere: 'Atmosphere: ', sep: ', ', listSep: ', ', end: '.', opening: 'Opening frame (continues from the previous segment): ', ending: 'Ending frame (hands over to the next segment): ' },
+  ja: { shot: n => `【镜头${n}】`, says: 'が言う：', narration: 'ナレーション：', sound: '音：', seconds: (a, b) => `${a}-${b}秒`, cast: '登場人物：', scene: 'シーン：', props: '小道具：', cutTo: 'カット：', atmosphere: '雰囲気：', sep: '、', listSep: '、', end: '。', opening: '冒頭の画面（前のパートから続く）：', ending: 'ラストの画面（次のパートへ渡す）：' },
+  ko: { shot: n => `【镜头${n}】`, says: '이(가) 말한다: ', narration: '내레이션: ', sound: '소리: ', seconds: (a, b) => `${a}-${b}초`, cast: '등장인물: ', scene: '장면: ', props: '소품: ', cutTo: '컷 전환', atmosphere: '분위기: ', sep: ', ', listSep: ', ', end: '.', opening: '시작 화면(앞 구간에서 이어짐): ', ending: '마지막 화면(다음 구간으로 넘김): ' },
 }
 
 const labelsOf = (lang?: ContentLanguage | null) => LABELS[lang || 'zh'] || LABELS.zh
@@ -147,6 +149,14 @@ function beatLine(beat: BoardBeat, L: Labels) {
 
 function shotCamera(shot: BoardShot, L: Labels) {
   return [shot.size, shot.angle, shot.movement].map(v => trimEnd(v || '')).filter(Boolean).join('·')
+}
+
+/** 净版关键帧的格序 → 镜头时间对照（视频参考说明用）：第 N 格 = 拍号 + 起止秒 */
+export function boardPanelGuide(board: Board): string {
+  return boardPanels(board).map((p, i) => {
+    const range = p.beatIndex === 0 ? `${p.shot.start}-${p.shot.end}秒` : `${p.shot.start}-${p.shot.end}秒内的后续动作`
+    return `第${i + 1}格=${p.beat.code}（${range}，${p.shot.size}）`
+  }).join('，')
 }
 
 /** 故事板 → description（【镜头N】（景别·角度·运镜）1A … 1B …），兼容旧的提示词与校验链路 */
@@ -191,6 +201,9 @@ export function boardToVideoPrompt(board: Board, refs: BoardRefNames, atmosphere
     const gap = lang === 'en' || lang === 'ko' ? ' ' : ''
     return `${L.seconds(shot.start, shot.end)}：${lead}${L.end}${gap}${tagRefNames(beats, names)}`
   })
+  // 段首段尾状态是故事板的衔接约束：开场画面放在时间轴前，结尾画面放在时间轴后
+  const opening = board.start_state?.trim() ? `${L.opening}${tagRefNames(trimEnd(board.start_state), names)}${L.end}` : ''
+  const ending = board.end_state?.trim() ? `${L.ending}${tagRefNames(trimEnd(board.end_state), names)}${L.end}` : ''
   const tail = atmosphere?.trim() ? [`${L.atmosphere}${trimEnd(atmosphere)}${L.end}`] : []
-  return [header ? header + L.end : '', ...lines, ...tail].filter(Boolean).join('\n')
+  return [header ? header + L.end : '', opening, ...lines, ending, ...tail].filter(Boolean).join('\n')
 }

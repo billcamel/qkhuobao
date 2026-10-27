@@ -10,6 +10,7 @@ import { startBreakdown, startRewrite } from '../services/episode-agents.js'
 import { latestAgentTask, runningAgentTasks, serializeAgentTask } from '../services/agent-tasks.js'
 import { listStoryboardSnapshots, restoreStoryboardSnapshot } from '../services/storyboard-snapshots.js'
 import { listScriptScenes } from '../services/board-store.js'
+import { boardReferenceState, cleanImagesByStoryboard } from '../services/video-request.js'
 import { generateBoardImage } from '../services/board-image.js'
 
 const app = new Hono()
@@ -292,8 +293,13 @@ app.get('/:episode_id/storyboards', async (c) => {
   const allProps = (await db.select().from(schema.props))
     .filter(p => episodePropIds.includes(p.id) && !p.deletedAt)
 
+  // 故事板参考状态：生成视频前提示「未审核 / 净版未就绪」（只有审核通过且净版就绪才会约束视频）
+  const [epRow] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  const cleanImages = await cleanImagesByStoryboard(rows)
+
   return success(c, rows.map((row) => ({
     ...toSnakeCase(row),
+    board_reference_state: boardReferenceState(row, epRow?.boardReference !== false, cleanImages.get(row.id)),
     character_ids: charIdsByStoryboard.get(row.id) || [],
     prop_ids: propIdsByStoryboard.get(row.id) || [],
     characters: allChars

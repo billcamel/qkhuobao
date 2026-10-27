@@ -842,12 +842,14 @@
                           min="2"
                           max="30"
                           class="input video-duration-input"
+                          :disabled="!!selectedSb.board"
                           @change="onVideoDurationChange"
                         />
                         <span class="video-param-unit">{{ t('episode.inspector.durationUnit') }}</span>
                       </span>
                     </div>
-                    <div class="video-param-hint">{{ t('episode.inspector.durationHint') }}</div>
+                    <div class="video-param-hint">{{ selectedSb.board ? t('episode.board.durationLocked') : t('episode.inspector.durationHint') }}</div>
+                    <div v-if="boardRefHint(selectedSb)" class="video-param-hint board-ref-hint">{{ boardRefHint(selectedSb) }}</div>
                   </section>
                   <div class="video-inspector-effective">
                     {{ t('episode.inspector.effective', { model: effectiveVideoModelLabel || t('episode.vid.defaultModel'), res: episodeResolutionShort, dur: effectiveVideoDuration }) }}
@@ -1448,6 +1450,7 @@
             <div class="batch-video-row"><span>{{ t('episode.vid.confirmModel') }}</span><strong>{{ effectiveVideoModelLabel || t('episode.vid.defaultModel') }}</strong></div>
             <div class="batch-video-row"><span>{{ t('episode.vid.confirmResolution') }}</span><strong>{{ episodeResolutionLabel }}</strong></div>
             <div v-if="batchUnapprovedCount" class="batch-video-row board-unapproved-row"><span>{{ t('episode.board.unapprovedLabel') }}</span><strong>{{ t('episode.board.unapprovedCount', { n: batchUnapprovedCount }) }}</strong></div>
+            <div v-if="batchCleanMissingCount" class="batch-video-row board-unapproved-row"><span>{{ t('episode.board.cleanMissingLabel') }}</span><strong>{{ t('episode.board.unapprovedCount', { n: batchCleanMissingCount }) }}</strong></div>
             <p class="batch-video-note">{{ t('episode.vid.confirmNote') }}</p>
           </div>
           <footer class="dialog-foot">
@@ -3410,15 +3413,28 @@ function uploadAssetImage(kind, id) {
   })
 }
 
-// 故事板未审核通过时只提醒、不拦截（批量生成在确认弹窗中统一提示）
+// 故事板对视频的约束只在「审核通过 + 净版关键帧就绪」时生效；其他情况只提醒、不拦截（批量在确认弹窗中统一提示）
+function boardRefState(sb) {
+  return sb?.board_reference_state || (sb?.board ? 'not_approved' : 'no_board')
+}
 function isBoardUnapproved(sb) {
-  return !!sb?.board && (sb.board_status || sb.boardStatus) !== 'approved'
+  return boardRefState(sb) === 'not_approved'
+}
+function boardRefHint(sb) {
+  const state = boardRefState(sb)
+  if (state === 'used') return t('episode.board.refUsed')
+  if (state === 'not_approved') return t('episode.board.refNotApproved')
+  if (state === 'clean_missing') return t('episode.board.refCleanMissing')
+  if (state === 'off') return t('episode.board.refOff')
+  return ''
 }
 const batchUnapprovedCount = computed(() => batchVideoConfirm.value.targets.filter(isBoardUnapproved).length)
+const batchCleanMissingCount = computed(() => batchVideoConfirm.value.targets.filter(sb => boardRefState(sb) === 'clean_missing').length)
 
 async function genVid(sb, opts = {}) {
   if (!opts.forceNew && canRecoverVideo(sb.id)) return recoverVideo(sb)
   if (!opts.silent && isBoardUnapproved(sb) && !window.confirm(t('episode.board.unapprovedConfirm'))) return
+  if (!opts.silent && boardRefState(sb) === 'clean_missing' && !window.confirm(t('episode.board.cleanMissingConfirm'))) return
   const latest = latestVideoTask(sb.id)
   const forceNew = opts.forceNew || latest?.status === 'failed'
   if (forceNew && !window.confirm(t('episode.recovery.confirmNew'))) return

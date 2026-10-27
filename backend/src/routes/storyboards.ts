@@ -5,6 +5,7 @@ import { success, created, now, badRequest } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { generateStoryboardVideoPrompt } from '../services/video-prompts.js'
+import { previewStoryboardVideoRequest } from '../services/video-request.js'
 import { boardSchema } from '../services/board.js'
 import { updateStoryboardBoard } from '../services/board-store.js'
 import { BOARD_REVIEW_STATUSES, generateBoardImage, listBoardVersions, reviewBoard, selectBoardVersion } from '../services/board-image.js'
@@ -243,6 +244,14 @@ app.post('/:id/board-review', async (c) => {
   } catch (err: any) {
     return badRequest(c, err?.message || '审核失败')
   }
+})
+
+// GET /storyboards/:id/video-preview?config_id= — 预览实际发送给视频模型的提示词、参考图与时长（不提交任务）
+app.get('/:id/video-preview', async (c) => {
+  const configId = c.req.query('config_id') ? Number(c.req.query('config_id')) : undefined
+  const preview = await previewStoryboardVideoRequest(Number(c.req.param('id')), configId)
+  if (!preview) return badRequest(c, '分镜不存在')
+  return success(c, preview)
 })
 
 // DELETE /storyboards/:id

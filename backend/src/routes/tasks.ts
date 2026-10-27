@@ -5,9 +5,7 @@ import { success, created, badRequest } from '../utils/response.js'
 import { generateImage, generateVideo, recoverVideoTask } from '../services/generation.js'
 import { safeTaskError } from '../services/video-download.js'
 import { getActiveConfig, getConfigById } from '../services/ai.js'
-import { getDramaStylePrompt } from '../services/style-preset.js'
-import { loadStoryboardBindings, orderedReferenceAssets, resolvePromptRefs } from '../services/storyboard-refs.js'
-import { videoReferenceBoardImage } from '../services/board-image.js'
+import { applyVideoStylePrefix, buildStoryboardVideoInput } from '../services/video-request.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -30,8 +28,6 @@ app.get('/:id/diagnostics', async c => {
 
 type TaskType = 'image' | 'video'
 
-/** 故事板图作参考时的说明：只取镜头编排，不把制作标注画进视频 */
-const BOARD_REFERENCE_NOTE = '@图片1 是本段各镜头的关键画面（多格按镜头顺序排列），只用于参考每个镜头的构图、景别、人物站位与场景布置；视频是正常的单画面，不要出现多格拼接、分屏或任何文字。'
 
 const WAN_MEDIA_TYPES = new Set([
   'first_frame',
@@ -169,24 +165,18 @@ app.post('/', async (c) => {
       const effectiveConfig = configId
         ? (await getConfigById(configId)) ?? await getActiveConfig('video')
         : await getActiveConfig('video')
-      // auto_references：由后端按分镜绑定素材组装参考图（场景→角色→道具）并把 @名字 替换为 @图片N名字
+      // auto_references：由后端按分镜绑定素材与故事板组装提示词、参考图与时长（见 services/video-request.ts）
       if (body.auto_references === true && body.storyboard_id) {
-        const bindings = await loadStoryboardBindings(Number(body.storyboard_id))
-        if (!bindings) return badRequest(c, '分镜不存在')
-        const limit = (effectiveConfig?.provider || '').toLowerCase() === 'aliyun' ? 10 : 9
-        // 故事板图作为第 1 张参考图（集开关 board_reference，默认开）：约束镜头顺序、构图、动作与运镜
-        const [epRow] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, bindings.storyboard.episodeId))
-        // 只用净版关键帧图（审核通过时自动生成）：带文字/箭头的故事板会把标注画进视频
-        const boardImage = epRow?.boardReference !== false ? await videoReferenceBoardImage(bindings.storyboard.id) : null
-        const assetRefs = orderedReferenceAssets(bindings, boardImage ? limit - 1 : limit)
-        const refs = boardImage
-          ? [{ kind: 'scene' as const, id: 0, name: '', imageUrl: boardImage }, ...assetRefs]
-          : assetRefs
-        videoBody.reference_image_urls = refs.map(r => r.imageUrl)
-        // 优先用请求带来的原始提示词（界面上可能有尚未落库的编辑），否则取分镜已保存的
-        const rawPrompt = String(videoBody.prompt || '').trim() || bindings.storyboard.videoPrompt || ''
-        const resolved = resolvePromptRefs(rawPrompt, refs)
-        videoBody.prompt = boardImage ? `${BOARD_REFERENCE_NOTE}\n${resolved}` : resolved
+        const input = await buildStoryboardVideoInput(Number(body.storyboard_id), {
+          provider: effectiveConfig?.provider,
+          // 优先用请求带来的原始提示词（界面上可能有尚未落库的编辑），否则取分镜已保存的
+          rawPrompt: videoBody.prompt,
+        })
+        if (!input) return badRequest(c, '分镜不存在')
+        videoBody.reference_image_urls = input.references.map(r => r.imageUrl)
+        videoBody.prompt = input.prompt
+        // 有故事板时以故事板时间轴为准，避免提示词按秒分段与视频时长错位
+        if (input.duration) videoBody.duration = input.duration
       }
       const validationError = validateVideoRequest(videoBody, effectiveConfig?.provider)
       if (validationError) return badRequest(c, validationError)
@@ -203,11 +193,7 @@ app.post('/', async (c) => {
 
     // 视频生成时把项目视觉风格词注入提示词最前方（与图片侧的自动注入保持一致口径）
     let videoPrompt = videoBody?.prompt
-    if (type === 'video' && String(videoPrompt || '').trim()) {
-      const dramaId = body.drama_id ?? storyboardDramaId ?? null
-      const stylePrompt = await getDramaStylePrompt(dramaId)
-      if (stylePrompt) videoPrompt = `${stylePrompt}，\n${videoPrompt}`
-    }
+    if (type === 'video') videoPrompt = await applyVideoStylePrefix(videoPrompt, body.drama_id ?? storyboardDramaId ?? null)
 
     const id = type === 'image'
       ? await generateImage({
