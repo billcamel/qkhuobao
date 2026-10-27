@@ -671,11 +671,19 @@
                   </section>
 
                   <section class="video-inspector-section">
-                    <div class="video-inspector-prompt-head">
+                    <!-- 参考素材默认折叠：标题行显示绑定数与已绑定素材名，点击展开调整绑定 -->
+                    <button
+                      type="button"
+                      class="video-inspector-prompt-head video-refs-toggle"
+                      :aria-expanded="refsExpanded"
+                      @click="toggleRefsExpanded"
+                    >
+                      <ChevronRight :size="13" :class="['video-refs-chevron', { open: refsExpanded }]" />
                       <span class="video-inspector-label">{{ t('episode.ref.title') }}</span>
-                      <span class="tag mono">{{ t('episode.ref.boundCount', { bound: refBindableAssets.filter(a => a.bound).length, total: refBindableAssets.length }) }}</span>
-                    </div>
-                    <div class="storyboard-ref-list is-embedded">
+                      <span v-if="!refsExpanded" class="video-refs-summary">{{ boundRefSummary || t('episode.ref.noneBound') }}</span>
+                      <span class="tag mono ml-auto">{{ t('episode.ref.boundCount', { bound: refBindableAssets.filter(a => a.bound).length, total: refBindableAssets.length }) }}</span>
+                    </button>
+                    <div v-show="refsExpanded" class="storyboard-ref-list is-embedded">
                       <template v-for="g in REF_KINDS" :key="g.kind">
                         <div v-if="refBindableAssets.filter(a => a.kind === g.kind).length" class="storyboard-ref-group">
                           <div class="storyboard-ref-group-label">{{ g.label }}</div>
@@ -1550,7 +1558,7 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
   Users, FileText, FolderKanban, Clapperboard, Download, Loader2,
-  Plus, X, ListTodo, CircleHelp, LayoutPanelTop,
+  Plus, X, ListTodo, CircleHelp, LayoutPanelTop, ChevronRight,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
 import { startTour, autoTour } from '~/composables/useTour'
@@ -3452,6 +3460,15 @@ function uploadAssetImage(kind, id) {
   })
 }
 
+// 参考素材默认折叠；展开状态记在本地，切换分镜不重置
+const REFS_EXPANDED_KEY = 'huobao:video:refs-expanded'
+const refsExpanded = ref((() => { try { return localStorage.getItem(REFS_EXPANDED_KEY) === '1' } catch { return false } })())
+function toggleRefsExpanded() {
+  refsExpanded.value = !refsExpanded.value
+  try { localStorage.setItem(REFS_EXPANDED_KEY, refsExpanded.value ? '1' : '0') } catch { /* 静默 */ }
+}
+const boundRefSummary = computed(() => refBindableAssets.value.filter(a => a.bound).map(a => a.name).join(t('common.listJoin')))
+
 // ─── 视频页的故事板展示 ───
 function parseBoardJson(raw) {
   if (!raw) return null
@@ -4905,6 +4922,11 @@ onMounted(() => setTimeout(() => autoTour('episode', EPISODE_TOUR, t), 900))
   align-items: start;
 }
 .video-main-grid.is-single { grid-template-columns: 1fr; }
+.video-refs-toggle { width: 100%; display: flex; align-items: center; gap: 6px; padding: 4px 0; background: none; border: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.video-refs-toggle:hover .video-inspector-label { color: var(--accent); }
+.video-refs-chevron { flex: none; color: var(--text-2); transition: transform .15s var(--ease-out); }
+.video-refs-chevron.open { transform: rotate(90deg); }
+.video-refs-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
 .video-main-scroll > .vboard { margin-bottom: 16px; }
 .video-actual-toggle { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent-text); font-size: 12px; cursor: pointer; }
 .video-actual-prompt { margin: 0; white-space: pre-wrap; font-size: 11.5px; line-height: 1.55; background: var(--surface-muted); border-radius: var(--radius-sm); padding: 8px 10px; max-height: 260px; overflow: auto; color: var(--text-1); }
