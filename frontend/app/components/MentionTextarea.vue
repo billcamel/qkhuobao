@@ -1,5 +1,10 @@
 <template>
-  <div class="mention-textarea" ref="wrapEl">
+  <!-- 只读：直接渲染高亮文本，高度随内容 -->
+  <div v-if="readonly" :class="[inputClass, 'mention-static']">
+    <div v-if="text" class="mention-backdrop-content" v-html="highlightedHtml"></div>
+    <div v-else class="mention-static-empty">{{ placeholder }}</div>
+  </div>
+  <div v-else class="mention-textarea" ref="wrapEl">
     <!-- 高亮镜像层：渲染与 textarea 完全相同的文本，@引用 着彩色；textarea 文字透明、仅显示光标 -->
     <div ref="backdropEl" :class="[inputClass, 'mention-backdrop']" aria-hidden="true">
       <div class="mention-backdrop-content" v-html="highlightedHtml"></div>
@@ -61,6 +66,8 @@ const props = defineProps({
   rows: { type: [Number, String], default: 4 },
   placeholder: { type: String, default: '' },
   inputClass: { type: String, default: '' },
+  // 只读展示（不可编辑、无 @ 补全），高度随内容
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'commit'])
 
@@ -373,18 +380,27 @@ function onBlur(e) {
   color: var(--text-3);
 }
 /* @引用 着色：不改字距/内边距，保证与透明文本逐字对齐 */
-.mention-backdrop :deep(.mention-token) {
+.mention-backdrop :deep(.mention-token),
+.mention-static :deep(.mention-token) {
   border-radius: 4px;
   font-weight: 600;
 }
-.mention-backdrop :deep(.mention-token-role) {
+.mention-backdrop :deep(.mention-token-role),
+.mention-static :deep(.mention-token-role) {
   color: var(--accent-text);
   background: var(--accent-bg);
 }
-.mention-backdrop :deep(.mention-token-scene) {
+.mention-backdrop :deep(.mention-token-scene),
+.mention-static :deep(.mention-token-scene) {
   color: var(--tag-success-text);
   background: var(--success-bg);
 }
+.mention-static {
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: default;
+}
+.mention-static-empty { color: var(--text-3); }
 .mention-dropdown {
   position: fixed;
   z-index: var(--z-menu);

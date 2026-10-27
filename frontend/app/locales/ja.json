@@ -707,7 +707,10 @@
       "restored": "{n} 件の絵コンテを復元しました",
       "snapshotRebreak": "再分解前",
       "snapshotBeforeRestore": "復元前",
-      "snapshotStat": "絵コンテ {n} 件 · 動画あり {v} 件"
+      "snapshotStat": "絵コンテ {n} 件 · 動画あり {v} 件",
+      "editPrompt": "修正",
+      "promptEmpty": "動画プロンプトはまだありません。「AI 生成」または「修正」をクリック",
+      "promptEditBoardHint": "手動の修正はこのパートの動画にのみ反映されます。プロンプトを再生成するかストーリーボードを編集すると、ストーリーボードから再導出して上書きされます。"
     },
     "ref": {
       "title": "参照素材",

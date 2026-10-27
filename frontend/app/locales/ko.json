@@ -707,7 +707,10 @@
       "restored": "스토리보드 {n}개를 복원했습니다",
       "snapshotRebreak": "재분할 전",
       "snapshotBeforeRestore": "복원 전",
-      "snapshotStat": "스토리보드 {n}개 · 영상 {v}개"
+      "snapshotStat": "스토리보드 {n}개 · 영상 {v}개",
+      "editPrompt": "수정",
+      "promptEmpty": "아직 비디오 프롬프트가 없습니다. 「AI 생성」 또는 「수정」을 클릭하세요",
+      "promptEditBoardHint": "수동 수정은 이 구간의 비디오에만 적용됩니다. 프롬프트를 다시 생성하거나 스토리보드를 편집하면 스토리보드에서 다시 도출해 덮어씁니다."
     },
     "ref": {
       "title": "참조 소재",

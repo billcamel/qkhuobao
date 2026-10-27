@@ -707,7 +707,10 @@
       "restored": "已恢复 {n} 个分镜",
       "snapshotRebreak": "重新拆分前",
       "snapshotBeforeRestore": "恢复前",
-      "snapshotStat": "{n} 个分镜 · {v} 个已出片"
+      "snapshotStat": "{n} 个分镜 · {v} 个已出片",
+      "editPrompt": "修改",
+      "promptEmpty": "还没有视频提示词，点击「AI 生成」或「修改」",
+      "promptEditBoardHint": "手动修改只影响本段视频；重新生成提示词或编辑故事板后会按故事板重新推导并覆盖。"
     },
     "ref": {
       "title": "参考素材",

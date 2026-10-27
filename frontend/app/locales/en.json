@@ -707,7 +707,10 @@
       "restored": "Restored {n} storyboards",
       "snapshotRebreak": "Before re-break",
       "snapshotBeforeRestore": "Before restore",
-      "snapshotStat": "{n} storyboards · {v} with video"
+      "snapshotStat": "{n} storyboards · {v} with video",
+      "editPrompt": "Edit",
+      "promptEmpty": "No video prompt yet — click \"AI Generate\" or \"Edit\"",
+      "promptEditBoardHint": "Manual edits only affect this segment’s video; regenerating the prompt or editing the storyboard re-derives it from the storyboard and overwrites it."
     },
     "ref": {
       "title": "Reference Assets",

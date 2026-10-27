@@ -722,24 +722,43 @@
                   <section class="video-inspector-section">
                     <div class="video-inspector-prompt-head">
                       <span class="video-inspector-label video-inspector-label-hero">{{ t('episode.sb.videoPromptSection') }}</span>
-                      <button
-                        type="button"
-                        class="btn btn-sm"
-                        :disabled="videoPromptGeneratingIds.includes(selectedSb?.id) || videoPromptBatch.running"
-                        @click="genVideoPrompt(selectedSb)"
-                      >
-                        <Loader2 v-if="videoPromptGeneratingIds.includes(selectedSb?.id)" :size="11" class="animate-spin" />
-                        {{ (selectedSb.video_prompt || selectedSb.videoPrompt) ? t('episode.sb.regenPrompt') : t('episode.sb.aiGenerate') }}
-                      </button>
+                      <!-- 默认只读，点「修改」进入编辑，保存/取消显式确认（不再失焦自动保存） -->
+                      <div v-if="promptEditing" class="flex gap-1">
+                        <button type="button" class="btn btn-sm" @click="cancelPromptEdit">{{ t('common.cancel') }}</button>
+                        <button type="button" class="btn btn-sm btn-primary" @click="savePromptEdit">{{ t('common.save') }}</button>
+                      </div>
+                      <div v-else class="flex gap-1">
+                        <button type="button" class="btn btn-sm" @click="startPromptEdit">
+                          <Pencil :size="11" /> {{ t('episode.sb.editPrompt') }}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          :disabled="videoPromptGeneratingIds.includes(selectedSb?.id) || videoPromptBatch.running"
+                          @click="genVideoPrompt(selectedSb)"
+                        >
+                          <Loader2 v-if="videoPromptGeneratingIds.includes(selectedSb?.id)" :size="11" class="animate-spin" />
+                          {{ (selectedSb.video_prompt || selectedSb.videoPrompt) ? t('episode.sb.regenPrompt') : t('episode.sb.aiGenerate') }}
+                        </button>
+                      </div>
                     </div>
                     <MentionTextarea
-                      :model-value="selectedSb.video_prompt || selectedSb.videoPrompt || ''"
+                      v-if="promptEditing"
+                      v-model="promptDraft"
                       :options="mentionOptions"
                       :rows="14"
                       input-class="textarea video-inspector-prompt"
                       :placeholder="t('episode.inspector.videoPromptPlaceholder')"
-                      @commit="v => updateField(selectedSb, 'video_prompt', v)"
                     />
+                    <MentionTextarea
+                      v-else
+                      readonly
+                      :model-value="selectedSb.video_prompt || selectedSb.videoPrompt || ''"
+                      :options="mentionOptions"
+                      input-class="textarea video-inspector-prompt"
+                      :placeholder="t('episode.sb.promptEmpty')"
+                    />
+                    <div v-if="promptEditing && selectedBoard" class="video-param-hint">{{ t('episode.sb.promptEditBoardHint') }}</div>
                     <button type="button" class="video-actual-toggle" @click="showActualPrompt = !showActualPrompt">
                       {{ showActualPrompt ? t('episode.board.hideActual') : t('episode.board.showActual') }}
                     </button>
@@ -1558,7 +1577,7 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
   Users, FileText, FolderKanban, Clapperboard, Download, Loader2,
-  Plus, X, ListTodo, CircleHelp, LayoutPanelTop, ChevronRight,
+  Plus, X, ListTodo, CircleHelp, LayoutPanelTop, ChevronRight, Pencil,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
 import { startTour, autoTour } from '~/composables/useTour'
@@ -3459,6 +3478,22 @@ function uploadAssetImage(kind, id) {
     }
   })
 }
+
+// 视频提示词：默认只读，点「修改」后编辑草稿，保存才写回；切换分镜时放弃未保存的编辑
+const promptEditing = ref(false)
+const promptDraft = ref('')
+function startPromptEdit() {
+  promptDraft.value = selectedSb.value?.video_prompt || selectedSb.value?.videoPrompt || ''
+  promptEditing.value = true
+}
+function cancelPromptEdit() {
+  promptEditing.value = false
+}
+function savePromptEdit() {
+  if (selectedSb.value) updateField(selectedSb.value, 'video_prompt', promptDraft.value)
+  promptEditing.value = false
+}
+watch(() => selectedSb.value?.id, () => { promptEditing.value = false })
 
 // 参考素材默认折叠；展开状态记在本地，切换分镜不重置
 const REFS_EXPANDED_KEY = 'huobao:video:refs-expanded'
@@ -5434,6 +5469,7 @@ button.video-task-metric.on { box-shadow: 0 0 0 2px var(--accent); }
   gap: 8px;
 }
 /* MentionTextarea 内部元素需 :deep 穿透（scoped 样式默认到不了子组件内部） */
+:deep(.mention-static.video-inspector-prompt) { background: var(--surface-muted); }
 :deep(.video-inspector-prompt) {
   min-height: 176px;
   font-size: 13px;
