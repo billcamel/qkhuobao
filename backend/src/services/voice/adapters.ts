@@ -166,12 +166,23 @@ export function volcengineResourceId(model: string | null | undefined): string {
  * 这是语音产品，不能复用方舟 Seedance/Seedream 的 key。
  */
 export function buildVolcengineSpeechRequest(config: VoiceConfig, input: { voiceId: string; text: string }): SpeechRequest {
+  const resourceId = volcengineResourceId(config.model)
+  // 音色与资源版本必须配套：2.0(seed-tts-2.0) 只认 uranus_bigtts，1.0 只认 moon_bigtts，
+  // 混用会被上游以 55000000 "resource ID is mismatched with speaker related resource" 拒绝。
+  const isV2Resource = /2\.0/.test(resourceId)
+  const speaker = input.voiceId
+  if (isV2Resource && speaker.includes('_moon_bigtts')) {
+    throw new Error(`音色 ${speaker} 属于豆包语音 1.0，与当前 2.0 资源不匹配，请改用 *_uranus_bigtts 音色`)
+  }
+  if (!isV2Resource && speaker.includes('_uranus_bigtts')) {
+    throw new Error(`音色 ${speaker} 属于豆包语音 2.0，与当前 1.0 资源不匹配，请改用 *_moon_bigtts 音色`)
+  }
   return {
     url: joinProviderUrl(config.baseUrl, '/api/v3/tts', '/unidirectional'),
     method: 'POST',
     headers: {
       'X-Api-Key': config.apiKey,
-      'X-Api-Resource-Id': volcengineResourceId(config.model),
+      'X-Api-Resource-Id': resourceId,
       'X-Api-Request-Id': randomUUID(),
       'Content-Type': 'application/json',
     },

@@ -42,20 +42,23 @@ export const MINIMAX_VOICES: VoiceOption[] = [
   voice('lovely_girl', '萌萌女童', 'child', 'zh', 'MiniMax 系统音色'),
 ]
 
-/** 豆包语音合成 1.0（moon_bigtts）常用 voice_type。资源 ID 用 seed-tts-1.0，由模型名映射到 X-Api-Resource-Id。 */
+/**
+ * 豆包语音合成 2.0（uranus_bigtts）常用 voice_type。
+ * 资源 ID 用 seed-tts-2.0；2.0 资源不认 1.0 的 moon_bigtts 音色，
+ * 混用会报 `resource ID is mismatched with speaker related resource`。
+ * 下列音色均为实测可用（seed-tts-2.0 + 24k mp3）。
+ */
 export const VOLCENGINE_VOICES: VoiceOption[] = [
-  voice('zh_female_shuangkuaisisi_moon_bigtts', '爽快思思', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_male_wennuanahu_moon_bigtts', '温暖阿虎', 'male', 'zh', '豆包语音 moon'),
-  voice('zh_male_shaonianzixin_moon_bigtts', '少年梓辛', 'male', 'zh', '豆包语音 moon'),
-  voice('zh_female_tianmeixiaoyuan_moon_bigtts', '甜美小源', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_female_gaolengyujie_moon_bigtts', '高冷御姐', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_male_aojiaobazong_moon_bigtts', '傲娇霸总', 'male', 'zh', '豆包语音 moon'),
-  voice('zh_female_wanwanxiaohe_moon_bigtts', '湾湾小何', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_female_linjianvhai_moon_bigtts', '邻家女孩', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_male_yangguangqingnian_moon_bigtts', '阳光青年', 'male', 'zh', '豆包语音 moon'),
-  voice('zh_male_jingqiangkanye_moon_bigtts', '京腔侃爷', 'male', 'zh', '豆包语音 moon'),
-  voice('zh_female_wenrouxiaoya_moon_bigtts', '温柔小雅', 'female', 'zh', '豆包语音 moon'),
-  voice('zh_male_yuanboxiaoshu_moon_bigtts', '渊博小叔', 'male', 'zh', '豆包语音 moon'),
+  voice('zh_female_shuangkuaisisi_uranus_bigtts', '爽快思思', 'female', 'zh', '豆包语音 2.0'),
+  voice('zh_male_wennuanahu_uranus_bigtts', '温暖阿虎', 'male', 'zh', '豆包语音 2.0'),
+  voice('zh_male_shaonianzixin_uranus_bigtts', '少年梓辛', 'male', 'zh', '豆包语音 2.0'),
+  voice('zh_female_tianmeixiaoyuan_uranus_bigtts', '甜美小源', 'female', 'zh', '豆包语音 2.0'),
+  voice('zh_female_vv_uranus_bigtts', 'Vv 女声', 'female', 'zh', '豆包语音 2.0'),
+  voice('zh_female_xiaohe_uranus_bigtts', '小何', 'female', 'zh', '豆包语音 2.0'),
+  voice('zh_male_ruyayichen_uranus_bigtts', '儒雅逸辰', 'male', 'zh', '豆包语音 2.0'),
+  voice('zh_male_baqiqingshu_uranus_bigtts', '霸气青叔', 'male', 'zh', '豆包语音 2.0'),
+  voice('zh_male_yangguangqingnian_uranus_bigtts', '阳光青年', 'male', 'zh', '豆包语音 2.0'),
+  voice('zh_female_wenrouxiaoya_uranus_bigtts', '温柔小雅', 'female', 'zh', '豆包语音 2.0'),
 ]
 
 export function inferGender(id: string, name: string): VoiceGender {
@@ -88,11 +91,12 @@ export function inferCharacterGender(text: string): VoiceGender {
 const PORTRAIT_VOICE_ID: Record<string, Record<VoiceGender, string>> = {
   openai: { female: 'nova', male: 'onyx', child: 'shimmer', neutral: 'alloy' },
   minimax: { female: 'female-shaonv', male: 'male-qn-qingse', child: 'lovely_girl', neutral: 'female-chengshu' },
+  // 统一走 2.0（seed-tts-2.0 + uranus_bigtts），与已开通资源一致
   volcengine: {
-    female: 'zh_female_tianmeixiaoyuan_moon_bigtts',
-    male: 'zh_male_yangguangqingnian_moon_bigtts',
-    child: 'zh_female_linjianvhai_moon_bigtts',
-    neutral: 'zh_female_wenrouxiaoya_moon_bigtts',
+    female: 'zh_female_tianmeixiaoyuan_uranus_bigtts',
+    male: 'zh_male_yangguangqingnian_uranus_bigtts',
+    child: 'zh_female_vv_uranus_bigtts',
+    neutral: 'zh_female_wenrouxiaoya_uranus_bigtts',
   },
 }
 
