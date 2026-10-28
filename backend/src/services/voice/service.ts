@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../../db/index.js'
-import { getActiveConfig, isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../ai.js'
+import { getActiveConfig, isOfficialProvider, parseConfigTemperature } from '../ai.js'
 import { saveBinaryFile } from '../../utils/storage.js'
 import { generateVideo } from '../generation.js'
 import { talkingClipPrompt, talkingClipRequest } from './talking-clip.js'
@@ -22,7 +22,6 @@ function rowToVoiceConfig(row: typeof schema.aiServiceConfigs.$inferSelect): Voi
     apiKey: row.apiKey,
     model: Array.isArray(models) ? (models[0] || '') : '',
     temperature: parseConfigTemperature(row.settings),
-    appId: parseConfigAppId(row.settings),
   }
 }
 

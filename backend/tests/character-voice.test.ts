@@ -12,6 +12,7 @@ import {
   decodeAudioPayload,
   parseMinimaxAudio,
   parseVolcengineAudio,
+  volcengineResourceId,
 } from '../src/services/voice/adapters.ts'
 import { MINIMAX_VOICES, OPENAI_VOICES, VOLCENGINE_VOICES } from '../src/services/voice/catalog.ts'
 import type { VoiceConfig } from '../src/services/voice/types.ts'
@@ -22,7 +23,6 @@ const config = (partial: Partial<VoiceConfig>): VoiceConfig => ({
   baseUrl: 'https://example.test',
   apiKey: 'sk-test',
   model: 'tts-1',
-  appId: null,
   ...partial,
 })
 
@@ -78,15 +78,30 @@ test('speech requests follow each vendor contract', () => {
     provider: 'volcengine',
     baseUrl: 'https://openspeech.bytedance.com',
     apiKey: 'token-1',
-    appId: 'app-9',
     model: 'volcano_tts',
   }), { voiceId: 'zh_female_shuangkuaisisi_moon_bigtts', text: '试听' })
-  assert.equal(volc.url, 'https://openspeech.bytedance.com/api/v1/tts')
-  assert.equal(volc.headers.Authorization, 'Bearer;token-1')
-  assert.equal((volc.body as any).app.appid, 'app-9')
-  assert.equal((volc.body as any).app.cluster, 'volcano_tts')
-  assert.equal((volc.body as any).audio.voice_type, 'zh_female_shuangkuaisisi_moon_bigtts')
-  assert.equal((volc.body as any).request.operation, 'query')
+  assert.equal(volc.url, 'https://openspeech.bytedance.com/api/v3/tts/unidirectional')
+  assert.equal(volc.headers['X-Api-Key'], 'token-1')
+  assert.equal(volc.headers['X-Api-Resource-Id'], 'seed-tts-1.0')
+  assert.match(volc.headers['X-Api-Request-Id'], /^[0-9a-f-]{36}$/i)
+  assert.equal(volc.headers.Authorization, undefined)
+  assert.equal((volc.body as any).app, undefined)
+  assert.equal((volc.body as any).user.uid, 'huobao-drama')
+  assert.equal((volc.body as any).req_params.text, '试听')
+  assert.equal((volc.body as any).req_params.speaker, 'zh_female_shuangkuaisisi_moon_bigtts')
+  assert.deepEqual((volc.body as any).req_params.audio_params, { format: 'mp3', sample_rate: 24000 })
+
+  const v2 = buildVolcengineSpeechRequest(config({
+    provider: 'volcengine',
+    baseUrl: 'https://openspeech.bytedance.com',
+    apiKey: 'key-2',
+    model: 'seed-tts-2.0',
+  }), { voiceId: 'zh_female_vv_uranus_bigtts', text: '你好' })
+  assert.equal(v2.headers['X-Api-Resource-Id'], 'seed-tts-2.0')
+  assert.equal(v2.headers.Authorization, undefined)
+  assert.equal(volcengineResourceId(''), 'seed-tts-1.0')
+  assert.equal(volcengineResourceId('volcano_icl'), 'seed-icl-1.0')
+  assert.equal(volcengineResourceId('seed-icl-2.0'), 'seed-icl-2.0')
 })
 
 test('vendor audio payloads decode to bytes', () => {
@@ -94,8 +109,17 @@ test('vendor audio payloads decode to bytes', () => {
   assert.deepEqual(decodeAudioPayload(pcm.toString('hex')), pcm)
   assert.deepEqual(parseMinimaxAudio({ base_resp: { status_code: 0 }, data: { audio: pcm.toString('hex') } }), pcm)
   assert.throws(() => parseMinimaxAudio({ base_resp: { status_code: 1001, status_msg: 'bad key' } }), /bad key/)
-  assert.deepEqual(parseVolcengineAudio({ code: 3000, data: pcm.toString('base64') }), pcm)
-  assert.throws(() => parseVolcengineAudio({ code: 3001, message: 'quota' }), /quota/)
+  const head = Buffer.from([0x49, 0x44])
+  const tail = Buffer.from([0x33])
+  const stream = [
+    `data: ${JSON.stringify({ code: 0, message: '', data: head.toString('base64') })}`,
+    JSON.stringify({ code: 0, message: '', data: null, sentence: { text: '试' } }),
+    JSON.stringify({ code: 0, message: '', data: tail.toString('base64') }),
+    JSON.stringify({ code: 20000000, message: 'ok', data: null }),
+  ].join('\n')
+  assert.deepEqual(parseVolcengineAudio(stream), Buffer.concat([head, tail]))
+  assert.throws(() => parseVolcengineAudio(JSON.stringify({ code: 45000000, message: 'speaker permission denied' })), /speaker permission denied/)
+  assert.throws(() => parseVolcengineAudio(''), /没有返回音频/)
 })
 
 test('built-in voice catalogs keep unique ids', () => {

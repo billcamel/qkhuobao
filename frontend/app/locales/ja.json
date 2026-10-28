@@ -413,9 +413,11 @@
       "unreachable": "エンドポイントのテストに失敗しました",
       "providerRequired": "プロバイダーを選択してください",
       "tempInvalid": "Temperature は 0〜2 の数値で入力してください",
-      "appId": "App ID",
-      "appIdHint": "火山エンジン音声合成の App ID。API Key には Access Token を入れます。両者は別の値です。",
-      "volcengineClusterHint": "豆包音声のモデル名は cluster です。大モデル音色は通常 volcano_tts です。"
+      "volcengineApiKey": "API Key（X-Api-Key）",
+      "volcengineApiKeyPlaceholder": "コンソール API Key",
+      "volcengineApiKeyHint": "火山エンジンコンソールの「API Key 管理」で発行したキーを入力します。リクエストヘッダーは X-Api-Key です。App ID と Access Token は不要です。",
+      "volcengineResourceId": "リソース ID（X-Api-Resource-Id）",
+      "volcengineResourceHint": "モデル名が X-Api-Resource-Id になり、課金商品も決まります。組み込み moon 音色は seed-tts-1.0、2.0 音色は seed-tts-2.0、音声クローンは seed-icl-1.0 または seed-icl-2.0。保存済みの volcano_tts は seed-tts-1.0 として呼び出します。"
     },
     "styleDialog": {
       "editTitle": "スタイルプリセットを編集",

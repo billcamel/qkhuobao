@@ -5,6 +5,7 @@ import { success, notFound, created, badRequest, now } from '../utils/response.j
 import { toSnakeCase } from '../utils/transform.js'
 import { joinProviderUrl } from '../services/adapters/url.js'
 import { apiKeyProblem, isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../services/ai.js'
+import { volcengineResourceId } from '../services/voice/adapters.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -91,6 +92,19 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
   }
 
   if (p === 'volcengine') {
+    if (serviceType === 'tts') {
+      // 空请求体不会合成。新版控制台只带 X-Api-Key；资源 ID 选择模型族与计费商品。
+      return {
+        method: 'POST',
+        url: joinProviderUrl(baseUrl, '/api/v3/tts', '/unidirectional'),
+        headers: {
+          ...(apiKey ? { 'X-Api-Key': apiKey } : {}),
+          'X-Api-Resource-Id': volcengineResourceId(m),
+          'Content-Type': 'application/json',
+        },
+        body: {},
+      }
+    }
     const path = serviceType === 'video'
       ? '/contents/generations/tasks'
       : serviceType === 'text'
@@ -143,19 +157,6 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
       url: joinProviderUrl(baseUrl, '/v1', '/get_voice'),
       headers: bearerHeaders(apiKey, true),
       body: { voice_type: 'system' },
-    }
-  }
-
-  if (serviceType === 'tts' && p === 'volcengine') {
-    // 空请求不会合成。豆包语音的鉴权头使用分号：Bearer;token
-    return {
-      method: 'POST',
-      url: joinProviderUrl(baseUrl, '/api/v1', '/tts'),
-      headers: {
-        ...(apiKey ? { Authorization: `Bearer;${apiKey}` } : {}),
-        'Content-Type': 'application/json',
-      },
-      body: {},
     }
   }
 
