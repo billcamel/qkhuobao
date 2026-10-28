@@ -110,6 +110,7 @@ export async function setCharacterVoice(id: number, body: any) {
       voiceId,
       voiceName,
       clipUrl: sameVoice ? row.voiceClipUrl : null,
+      audioUrl: sameVoice ? row.voicePreviewUrl : null,
       meta: {
         config_id: config?.id ?? null,
         model: config?.model || null,
@@ -203,6 +204,7 @@ export async function previewCharacterVoice(id: number, body: any = {}) {
     ...(task?.status === 'processing' ? { clip_task_id: taskId } : {}),
   }
   await db.update(schema.characters).set({
+    voicePreviewUrl: audioPath,
     voiceMeta: JSON.stringify(meta),
     updatedAt: now(),
   }).where(eq(schema.characters.id, id))

@@ -5,6 +5,7 @@ type CharacterRow = {
   voiceProvider?: string | null
   voiceId?: string | null
   voiceName?: string | null
+  voicePreviewUrl?: string | null
   voiceClipUrl?: string | null
   voiceMeta?: string | null
 }
@@ -36,6 +37,7 @@ export function readCharacterVoice(row: CharacterRow | null | undefined): Charac
     provider,
     voice_id: voiceId,
     name: String(row?.voiceName || '').trim() || voiceId,
+    audio_url: row?.voicePreviewUrl ? String(row.voicePreviewUrl) : null,
     clip_url: row?.voiceClipUrl ? String(row.voiceClipUrl) : null,
     config_id: Number.isFinite(configId) && configId > 0 ? configId : null,
     model: typeof meta.model === 'string' && meta.model ? meta.model : null,
@@ -70,13 +72,14 @@ export function voiceColumnValues(input: {
   voiceId: string
   voiceName: string
   clipUrl?: string | null
+  audioUrl?: string | null
   meta: Record<string, unknown>
 }) {
   return {
     voiceProvider: input.provider,
     voiceId: input.voiceId,
     voiceName: input.voiceName,
-    voicePreviewUrl: null,
+    voicePreviewUrl: input.audioUrl ?? null,
     voiceClipUrl: input.clipUrl ?? null,
     voiceMeta: JSON.stringify(input.meta),
   }

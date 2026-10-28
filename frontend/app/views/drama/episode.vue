@@ -876,16 +876,15 @@
                       <span class="tag mono">{{ videoPreview ? videoPreview.references.length : boundRefAssets.length }}</span>
                     </div>
                     <!-- 与实际请求一致：顺序即 @图片N 编号，故事板段第 1 张为净版关键帧 -->
-                    <div v-if="videoPreview && videoPreview.reference_videos?.length" class="video-bound-refs">
+                    <div v-if="videoPreview && videoPreview.reference_audios?.length" class="video-voice-audios">
                       <div
-                        v-for="clip in videoPreview.reference_videos"
-                        :key="'voice-' + clip.index"
-                        class="video-bound-ref"
-                        :title="`@视频${clip.index} · ${clip.name}`"
+                        v-for="audio in videoPreview.reference_audios"
+                        :key="'voice-audio-' + audio.index"
+                        class="video-voice-audio"
+                        :title="`@音频${audio.index} · ${audio.name}`"
                       >
-                        <video :src="assetImageSrc({ imageUrl: clip.url })" muted playsinline preload="metadata" />
-                        <span class="video-ref-index mono">@视频{{ clip.index }}</span>
-                        <small>{{ clip.name }}</small>
+                        <span class="video-ref-index mono">@音频{{ audio.index }} · {{ audio.name }}</span>
+                        <audio :src="assetImageSrc({ imageUrl: audio.url })" controls preload="none" />
                       </div>
                     </div>
                     <div v-if="videoPreview && videoPreview.references.length" class="video-bound-refs">
@@ -5550,6 +5549,9 @@ button.video-task-metric.on { box-shadow: 0 0 0 2px var(--accent); }
 .video-inspector-action { width: 100%; min-height: 32px; height: 32px; padding: 0 12px; font-size: 12.5px; }
 /* 绑定参考图：当前分镜已绑定素材的图片平铺（生成时作为参考图提交） */
 .video-bound-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.video-voice-audios { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.video-voice-audio { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.video-voice-audio audio { width: 100%; height: 32px; }
 .video-bound-ref {
   position: relative;
   aspect-ratio: 1;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initSqliteSchema } from '../src/db/sqlite-schema.ts'
 import { presentCharacter, previewTextFor, readCharacterVoice } from '../src/services/voice/binding.ts'
-import { appendVoiceClipNote, collectVoiceClips, voiceClipLimit } from '../src/services/video-request.ts'
+import { appendVoiceAudioNote, collectVoiceAudios, voiceAudioLimit } from '../src/services/video-request.ts'
 import { talkingClipPrompt, talkingClipRequest } from '../src/services/voice/talking-clip.ts'
 import {
   buildMinimaxSpeechRequest,
@@ -39,6 +39,7 @@ test('character voice round-trips metadata and is attached for later dubbing', (
     voiceProvider: 'minimax',
     voiceId: 'female-shaonv',
     voiceName: '少女',
+    voicePreviewUrl: 'static/voice-audio/demo.mp3',
     voiceClipUrl: 'static/voice-clips/demo.mp4',
     voiceMeta: JSON.stringify({ config_id: 4, model: 'speech-02-hd', gender: 'female', language: 'zh', sample_text: '大家好' }),
   }
@@ -46,6 +47,7 @@ test('character voice round-trips metadata and is attached for later dubbing', (
   assert.equal(voice?.provider, 'minimax')
   assert.equal(voice?.voice_id, 'female-shaonv')
   assert.equal(voice?.name, '少女')
+  assert.equal(voice?.audio_url, 'static/voice-audio/demo.mp3')
   assert.equal(voice?.clip_url, 'static/voice-clips/demo.mp4')
   assert.equal(voice?.config_id, 4)
   assert.equal(voice?.model, 'speech-02-hd')
@@ -106,22 +108,24 @@ test('built-in voice catalogs keep unique ids', () => {
   assert.ok(VOLCENGINE_VOICES.some(voice => voice.id === 'zh_female_shuangkuaisisi_moon_bigtts'))
 })
 
-test('speaking clips are attached as reference videos, not audio', () => {
-  assert.equal(voiceClipLimit('volcengine'), 3)
-  assert.equal(voiceClipLimit('minimax'), 3)
-  assert.equal(voiceClipLimit('aliyun'), 5)
-  const clips = collectVoiceClips([
-    { id: 1, name: '林小雨', voiceClipUrl: 'static/voice-clips/a.mp4' },
-    { id: 2, name: '旁白', voiceClipUrl: '' },
-    { id: 3, name: '阿宁', voiceClipUrl: 'static/voice-clips/b.mp4' },
-    { id: 4, name: '多出来', voiceClipUrl: 'static/voice-clips/c.mp4' },
-    { id: 5, name: '再多', voiceClipUrl: 'static/voice-clips/d.mp4' },
+test('shot generation attaches the TTS sample as reference audio, not the talking clip', () => {
+  assert.equal(voiceAudioLimit('volcengine'), 3)
+  assert.equal(voiceAudioLimit('minimax'), 3)
+  assert.equal(voiceAudioLimit('aliyun'), 5)
+  const audios = collectVoiceAudios([
+    { id: 1, name: '林小雨', voicePreviewUrl: 'static/voice-audio/a.mp3' },
+    { id: 2, name: '旁白', voicePreviewUrl: '' },
+    { id: 3, name: '阿宁', voicePreviewUrl: 'static/voice-audio/b.mp3' },
+    { id: 4, name: '多出来', voicePreviewUrl: 'static/voice-audio/c.mp3' },
+    { id: 5, name: '再多', voicePreviewUrl: 'static/voice-audio/d.mp3' },
   ], 3)
-  assert.deepEqual(clips.map(clip => clip.name), ['林小雨', '阿宁', '多出来'])
-  assert.equal(clips[0].index, 1)
-  const prompt = appendVoiceClipNote('开场', clips.slice(0, 1))
-  assert.match(prompt, /@视频1 是林小雨的说话样本/)
-  assert.equal(appendVoiceClipNote('开场', []), '开场')
+  assert.deepEqual(audios.map(audio => audio.name), ['林小雨', '阿宁', '多出来'])
+  assert.equal(audios[0].url, 'static/voice-audio/a.mp3')
+  assert.equal(audios[0].index, 1)
+  const prompt = appendVoiceAudioNote('开场', audios.slice(0, 1))
+  assert.match(prompt, /@音频1 是林小雨的参考音色/)
+  assert.doesNotMatch(prompt, /@视频/)
+  assert.equal(appendVoiceAudioNote('开场', []), '开场')
 })
 
 test('talking preview asks the video model for lip sync from the portrait and the voice line', () => {

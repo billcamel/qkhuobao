@@ -55,36 +55,36 @@ export function boardReferenceNote(guide: string) {
   return `@图片1 是本段各镜头的关键画面（多格按镜头顺序从左到右排列：${guide}），只用于参考每个镜头的构图、景别、人物站位与场景布置；视频是正常的单画面，不要出现多格拼接、分屏或任何文字。`
 }
 
-export interface VoiceClipRef {
+export interface VoiceAudioRef {
   index: number
   characterId: number
   name: string
   url: string
 }
 
-/** 参考视频条数：Seedance / MiniMax ≤3，Wan 3.0 ≤5。声音只走 reference_video，不走 reference_audio。 */
-export function voiceClipLimit(provider?: string | null) {
+/** 参考音频条数：Seedance / MiniMax ≤3，Wan 3.0 ≤5。角色声音走 reference_audio，不用说话短视频代替。 */
+export function voiceAudioLimit(provider?: string | null) {
   return (provider || '').toLowerCase() === 'aliyun' ? 5 : 3
 }
 
-export function collectVoiceClips(characters: { id: number; name?: string | null; voiceClipUrl?: string | null }[], limit: number): VoiceClipRef[] {
-  const clips: VoiceClipRef[] = []
+export function collectVoiceAudios(characters: { id: number; name?: string | null; voicePreviewUrl?: string | null }[], limit: number): VoiceAudioRef[] {
+  const audios: VoiceAudioRef[] = []
   for (const character of characters) {
-    const url = String(character.voiceClipUrl || '').trim()
-    if (!url || clips.length >= limit) continue
-    clips.push({ index: clips.length + 1, characterId: character.id, name: (character.name || '').trim(), url })
+    const url = String(character.voicePreviewUrl || '').trim()
+    if (!url || audios.length >= limit) continue
+    audios.push({ index: audios.length + 1, characterId: character.id, name: (character.name || '').trim(), url })
   }
-  return clips
+  return audios
 }
 
-/** 告诉视频模型：这些参考视频只提供角色声音，不要把试听画面剪进成片 */
-export function voiceClipPromptNote(clips: { index: number; name: string }[]) {
-  if (!clips.length) return ''
-  return clips.map(clip => `@视频${clip.index} 是${clip.name || '角色'}的说话样本，只借用这个声音；成片不要出现这段试听画面。`).join('\n')
+/** 参考音频按 @音频N 编号，对应各适配器的 reference_audio，不是说话短视频 */
+export function voiceAudioPromptNote(audios: { index: number; name: string }[]) {
+  if (!audios.length) return ''
+  return audios.map(audio => `@音频${audio.index} 是${audio.name || '角色'}的参考音色，让该角色用这个声音说话。`).join('\n')
 }
 
-export function appendVoiceClipNote(prompt: string, clips: { index: number; name: string }[]) {
-  const note = voiceClipPromptNote(clips)
+export function appendVoiceAudioNote(prompt: string, audios: { index: number; name: string }[]) {
+  const note = voiceAudioPromptNote(audios)
   if (!note) return prompt
   return prompt ? `${prompt}\n${note}` : note
 }
@@ -92,8 +92,8 @@ export function appendVoiceClipNote(prompt: string, clips: { index: number; name
 export interface StoryboardVideoInput {
   prompt: string
   references: (ReferenceAsset & { index: number })[]
-  /** 出场角色已有说话短视频时，按绑定顺序放入 reference_video（不是 reference_audio） */
-  voiceClips: VoiceClipRef[]
+  /** 出场角色已有 TTS 样本时，按绑定顺序放入 reference_audio。说话短视频不参与镜头请求 */
+  voiceAudios: VoiceAudioRef[]
   boardState: BoardReferenceState
   /** 有故事板时为故事板时长，否则 undefined（沿用请求值） */
   duration?: number
@@ -123,11 +123,11 @@ export async function buildStoryboardVideoInput(storyboardId: number, opts: { pr
   const raw = String(opts.rawPrompt || '').trim() || sb.videoPrompt || ''
   const resolved = resolvePromptRefs(raw, refs)
   const prompt = useBoard ? `${boardReferenceNote(boardPanelGuide(board!))}\n${resolved}` : resolved
-  const voiceClips = collectVoiceClips(bindings.characters, voiceClipLimit(opts.provider))
+  const voiceAudios = collectVoiceAudios(bindings.characters, voiceAudioLimit(opts.provider))
   return {
-    prompt: appendVoiceClipNote(prompt, voiceClips),
+    prompt: appendVoiceAudioNote(prompt, voiceAudios),
     references: refs.map((r, i) => ({ ...r, index: i + 1 })),
-    voiceClips,
+    voiceAudios,
     boardState,
     duration: board ? board.shots[board.shots.length - 1]?.end : undefined,
   }
@@ -156,12 +156,12 @@ export async function previewStoryboardVideoRequest(storyboardId: number, config
     board_state: input.boardState,
     prompt: await applyVideoStylePrefix(input.prompt, ep?.dramaId),
     references: input.references.map(r => ({ index: r.index, kind: r.id === 0 ? 'board' : r.kind, name: r.name, url: r.imageUrl })),
-    reference_videos: input.voiceClips.map(clip => ({
-      index: clip.index,
-      name: clip.name,
-      url: clip.url,
-      character_id: clip.characterId,
-      role: 'reference_video',
+    reference_audios: input.voiceAudios.map(audio => ({
+      index: audio.index,
+      name: audio.name,
+      url: audio.url,
+      character_id: audio.characterId,
+      role: 'reference_audio',
     })),
   }
 }

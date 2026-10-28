@@ -12,14 +12,17 @@ export interface VoiceOption {
 }
 
 /**
- * 角色上持久化的音色。clip_url 是定妆图加这段声音合成的说话短视频，
- * 资产页播放它，镜头生成时作为 reference_video 传入（视频模型用视频携带参考声音）。
+ * 角色上持久化的音色。
+ * audio_url 是 TTS 样本，镜头生成时作为 reference_audio。
+ * clip_url 是口型说话短视频，只在资产页播放，不传给镜头。
  */
 export interface CharacterVoice {
   provider: string
   voice_id: string
   name: string
-  /** 说话短视频。没有生成过则为 null */
+  /** TTS 样本。镜头的 reference_audio */
+  audio_url: string | null
+  /** 口型试听视频。资产页播放 */
   clip_url: string | null
   config_id: number | null
   model: string | null

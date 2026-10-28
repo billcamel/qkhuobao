@@ -5,8 +5,8 @@
  * - MiniMax H3：首帧定妆图 + audio_url，提示词必填
  * - Wan 3.0：reference_image + reference_audio，不能和 first_frame 混用
  *
- * 参考音频是本地 static 文件，提交时走现有 PUBLIC_BASE_URL 解析，和镜头参考音视频一样。
- * 生成出的 mp4 才是资产页播放、以及后续镜头 reference_video 使用的片段。
+ * 参考音频是本地 static 文件，提交时走现有 PUBLIC_BASE_URL 解析。
+ * 生成出的 mp4 只在资产页试听。镜头生成另把同一条 TTS 样本作为 reference_audio，不把这段视频当声音参考。
  */
 export const TALKING_CLIP_SECONDS = 5
 
