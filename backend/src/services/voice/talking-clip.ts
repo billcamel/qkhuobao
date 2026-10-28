@@ -1,12 +1,12 @@
 /**
- * 角色口型试听：把定妆图和所选音色的一句台词交给当前视频模型。
+ * 角色口型试听：把定妆图和已保存的参考音频交给当前视频模型。
  *
  * - Seedance：reference_image + reference_audio（role=reference_audio），有参考音频时必须同时有图或视频
  * - MiniMax H3：首帧定妆图 + audio_url，提示词必填
  * - Wan 3.0：reference_image + reference_audio，不能和 first_frame 混用
  *
  * 参考音频是本地 static 文件，提交时走现有 PUBLIC_BASE_URL 解析。
- * 生成出的 mp4 只在资产页试听。镜头生成另把同一条 TTS 样本作为 reference_audio，不把这段视频当声音参考。
+ * 生成出的 mp4 只在资产页试听。镜头生成另用同一条本地参考音频作为 reference_audio，不把这段视频当声音参考。
  */
 export const TALKING_CLIP_SECONDS = 5
 

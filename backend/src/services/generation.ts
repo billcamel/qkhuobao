@@ -75,7 +75,7 @@ interface GenerateVideoParams {
   characterId?: number
   /** voice_clip：角色口型试听，完成后回写 characters.voice_clip_url，不写分镜视频 */
   purpose?: string
-  /** 口型任务绑定的音色；完成时若角色已换音色则不覆盖新片段 */
+  /** 口型任务绑定的本地参考音频键；完成时若角色已更换参考音频则不覆盖新片段 */
   voiceId?: string
   /** 本次是否挂了故事板关键帧参考（真人审核被拒时据此自动降级重提） */
   boardReference?: boolean

@@ -5,8 +5,8 @@ function voice(id: string, name: string, gender: VoiceGender, language: string, 
 }
 
 /**
- * 内置目录是离线兜底。MiniMax 配置了密钥时会优先用实时列表覆盖。
- * 不在目录里的 voice_id（复刻音色）仍允许绑定。
+ * 内置目录只给「根据形象照生成参考音频」在内部挑一条合成音色。
+ * 用户不从这里选择远程 voice_id；角色绑定的是落在服务器上的参考音频。
  */
 export const OPENAI_VOICES: VoiceOption[] = [
   voice('alloy', '合金', 'neutral', 'multi', 'OpenAI alloy，中性'),
@@ -64,4 +64,41 @@ export function inferGender(id: string, name: string): VoiceGender {
   if (/female|woman|girl|女|shaonv|yujie|xiaoling|xiaohe|xiaoyuan|xiaoya/.test(text)) return 'female'
   if (/male|man|男|qingse|jingying|badao|nanyou|ahu|zixin/.test(text)) return 'male'
   return 'neutral'
+}
+
+export function catalogFor(provider: string): VoiceOption[] {
+  switch ((provider || '').toLowerCase()) {
+    case 'openai': return OPENAI_VOICES
+    case 'minimax': return MINIMAX_VOICES
+    case 'volcengine': return VOLCENGINE_VOICES
+    default: return []
+  }
+}
+
+/** 从角色文案推断性别。只用于形象照生成时在内部合成，不展示成音色列表。 */
+export function inferCharacterGender(text: string): VoiceGender {
+  const raw = String(text || '')
+  if (/女孩|男孩|男童|女童|儿童|小孩|幼童|童声|萝莉|正太|\bchild\b|\bkid\b|\bgirl\b|\bboy\b/i.test(raw)) return 'child'
+  if (/女|少女|御姐|女士|\bwoman\b|\bfemale\b/i.test(raw)) return 'female'
+  if (/男|少年|大叔|先生|\bman\b|\bmale\b/i.test(raw)) return 'male'
+  return 'neutral'
+}
+
+/** 形象照生成时内部使用的合成音色。调用方不传入远程 voice_id。 */
+const PORTRAIT_VOICE_ID: Record<string, Record<VoiceGender, string>> = {
+  openai: { female: 'nova', male: 'onyx', child: 'shimmer', neutral: 'alloy' },
+  minimax: { female: 'female-shaonv', male: 'male-qn-qingse', child: 'lovely_girl', neutral: 'female-chengshu' },
+  volcengine: {
+    female: 'zh_female_tianmeixiaoyuan_moon_bigtts',
+    male: 'zh_male_yangguangqingnian_moon_bigtts',
+    child: 'zh_female_linjianvhai_moon_bigtts',
+    neutral: 'zh_female_wenrouxiaoya_moon_bigtts',
+  },
+}
+
+export function defaultVoiceFor(provider: string, gender: VoiceGender): VoiceOption {
+  const list = catalogFor(provider)
+  if (!list.length) throw new Error('不支持的语音服务商')
+  const id = PORTRAIT_VOICE_ID[provider.toLowerCase()]?.[gender]
+  return list.find(voice => voice.id === id) || list.find(voice => voice.gender === gender) || list[0]
 }

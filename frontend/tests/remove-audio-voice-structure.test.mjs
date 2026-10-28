@@ -38,6 +38,12 @@ test('episode workbench sets a character voice without the old assignment agent'
   assert.doesNotMatch(episodePage, /audioConfigs/)
   assert.doesNotMatch(episodePage, /voicesAPI/)
   assert.match(voiceControl, /characterVoiceAPI/)
+  assert.match(voiceControl, /uploadAPI/)
+  assert.match(voiceControl, /audio_url/)
+  assert.match(voiceControl, /characterVoiceAPI\.generate/)
+  assert.match(useApi, /\/voice\/generate/)
+  assert.doesNotMatch(voiceControl, /voice_id/)
+  assert.doesNotMatch(voiceControl, /customId/)
 })
 
 test('project and settings pages keep audio service configuration removed and add speech', () => {

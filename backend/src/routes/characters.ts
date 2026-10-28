@@ -5,7 +5,7 @@ import { success, created, badRequest, now } from '../utils/response.js'
 import { generateImage } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
-import { clearCharacterVoice, previewCharacterVoice, presentCharacter, setCharacterVoice } from '../services/voice/service.js'
+import { clearCharacterVoice, generateCharacterVoiceFromPortrait, previewCharacterVoice, presentCharacter, setCharacterVoice } from '../services/voice/service.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -78,13 +78,13 @@ app.get('/:id/voice', async (c) => {
   return success(c, presentCharacter(row))
 })
 
-// PUT /characters/:id/voice — 绑定音色。换音色时清掉旧试听
+// PUT /characters/:id/voice — 绑定本地参考音频。换文件时清掉旧的说话视频
 app.put('/:id/voice', async (c) => {
   const id = Number(c.req.param('id'))
   try {
     return success(c, await setCharacterVoice(id, await c.req.json()))
   } catch (err: any) {
-    return badRequest(c, err?.message || '保存音色失败')
+    return badRequest(c, err?.message || '保存参考音频失败')
   }
 })
 
@@ -98,7 +98,22 @@ app.delete('/:id/voice', async (c) => {
   }
 })
 
-// POST /characters/:id/voice/preview — 用定妆图和已选音色合成说话短视频。换音色时先改绑定再重做视频
+// POST /characters/:id/voice/generate — 按形象照生成参考音频并保存到本地，有视频模型时顺带做说话试听
+app.post('/:id/voice/generate', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    logTaskStart('CharacterVoice', 'generate', { characterId: id })
+    const result = await generateCharacterVoiceFromPortrait(id, body)
+    logTaskSuccess('CharacterVoice', 'generate', { characterId: id, taskId: result.task_id, status: result.status })
+    return success(c, result)
+  } catch (err: any) {
+    logTaskError('CharacterVoice', 'generate', { characterId: id, error: err?.message })
+    return badRequest(c, err?.message || '参考音频生成失败')
+  }
+})
+
+// POST /characters/:id/voice/preview — 用已保存的参考音频和形象照做说话短视频
 app.post('/:id/voice/preview', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json().catch(() => ({}))

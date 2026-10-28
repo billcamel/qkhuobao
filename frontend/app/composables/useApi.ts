@@ -90,6 +90,7 @@ export const characterVoiceAPI = {
   get: (id: number) => api.get(`/characters/${id}/voice`),
   set: (id: number, data: any) => api.put(`/characters/${id}/voice`, data),
   clear: (id: number) => api.del(`/characters/${id}/voice`),
+  generate: (id: number, data?: any) => api.post(`/characters/${id}/voice/generate`, data || {}),
   preview: (id: number, data?: any) => api.post(`/characters/${id}/voice/preview`, data || {}),
 }
 

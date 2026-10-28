@@ -1,15 +1,15 @@
 import { Hono } from 'hono'
 import { success, badRequest } from '../utils/response.js'
-import { listAvailableVoices } from '../services/voice/service.js'
+import { listLocalReferenceAudios } from '../services/voice/service.js'
 
 const app = new Hono()
 
-// GET /voices — 已启用的语音合成配置及其音色（实时列表失败时回退内置目录）
+// GET /voices — 服务器上已有的参考音频，供角色直接选用
 app.get('/', async (c) => {
   try {
-    return success(c, await listAvailableVoices())
+    return success(c, await listLocalReferenceAudios())
   } catch (err: any) {
-    return badRequest(c, err?.message || '读取音色失败')
+    return badRequest(c, err?.message || '读取参考音频失败')
   }
 })
 

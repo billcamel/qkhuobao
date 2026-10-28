@@ -62,7 +62,7 @@ export interface VoiceAudioRef {
   url: string
 }
 
-/** 参考音频条数：Seedance / MiniMax ≤3，Wan 3.0 ≤5。角色声音走 reference_audio，不用说话短视频代替。 */
+/** 参考音频条数：Seedance / MiniMax ≤3，Wan 3.0 ≤5。角色声音走本地参考音频，不用说话短视频代替。 */
 export function voiceAudioLimit(provider?: string | null) {
   return (provider || '').toLowerCase() === 'aliyun' ? 5 : 3
 }
@@ -92,7 +92,7 @@ export function appendVoiceAudioNote(prompt: string, audios: { index: number; na
 export interface StoryboardVideoInput {
   prompt: string
   references: (ReferenceAsset & { index: number })[]
-  /** 出场角色已有 TTS 样本时，按绑定顺序放入 reference_audio。说话短视频不参与镜头请求 */
+  /** 出场角色已有本地参考音频时，按绑定顺序放入 reference_audio。说话短视频不参与镜头请求 */
   voiceAudios: VoiceAudioRef[]
   boardState: BoardReferenceState
   /** 有故事板时为故事板时长，否则 undefined（沿用请求值） */

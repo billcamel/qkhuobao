@@ -2,9 +2,14 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initSqliteSchema } from '../src/db/sqlite-schema.ts'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { presentCharacter, previewTextFor, readCharacterVoice } from '../src/services/voice/binding.ts'
 import { appendVoiceAudioNote, collectVoiceAudios, voiceAudioLimit } from '../src/services/video-request.ts'
 import { talkingClipPrompt, talkingClipRequest } from '../src/services/voice/talking-clip.ts'
+import { catalogFor, defaultVoiceFor, inferCharacterGender } from '../src/services/voice/catalog.ts'
+import { listStoredAudioFiles, mergeLibraryItems, normalizeLocalAudioUrl, voiceBindFromBody } from '../src/services/voice/local-audio.ts'
 import {
   buildMinimaxSpeechRequest,
   buildOpenAiSpeechRequest,
@@ -26,35 +31,119 @@ const config = (partial: Partial<VoiceConfig>): VoiceConfig => ({
   ...partial,
 })
 
-test('character voice is absent until both provider and voice id are stored', () => {
+test('character voice is the saved local audio, not a remote voice id', () => {
   assert.equal(readCharacterVoice(null), null)
-  assert.equal(readCharacterVoice({ voiceProvider: 'openai', voiceId: '  ' }), null)
-  assert.equal(readCharacterVoice({ voiceProvider: '', voiceId: 'alloy' }), null)
+  assert.equal(readCharacterVoice({ voiceProvider: 'openai', voiceId: 'alloy' }), null)
+  assert.equal(readCharacterVoice({ voiceProvider: 'minimax', voiceId: 'female-shaonv', voicePreviewUrl: '  ' }), null)
+  const audioOnly = readCharacterVoice({ voicePreviewUrl: 'static/voice-audio/demo.mp3', voiceName: '林小雨的参考音色' })
+  assert.equal(audioOnly?.provider, 'local')
+  assert.equal(audioOnly?.voice_id, 'local:demo.mp3')
+  assert.equal(audioOnly?.audio_url, 'static/voice-audio/demo.mp3')
+  assert.equal(audioOnly?.name, '林小雨的参考音色')
+  assert.equal(audioOnly?.source, null)
 })
 
-test('character voice round-trips metadata and is attached for later dubbing', () => {
+test('character voice round-trips the local asset and hides the internal synth id', () => {
   const row = {
     id: 7,
     name: '林小雨',
-    voiceProvider: 'minimax',
-    voiceId: 'female-shaonv',
-    voiceName: '少女',
+    voiceProvider: 'local',
+    voiceId: 'local:demo.mp3',
+    voiceName: '林小雨的参考音色',
     voicePreviewUrl: 'static/voice-audio/demo.mp3',
     voiceClipUrl: 'static/voice-clips/demo.mp4',
-    voiceMeta: JSON.stringify({ config_id: 4, model: 'speech-02-hd', gender: 'female', language: 'zh', sample_text: '大家好' }),
+    voiceMeta: JSON.stringify({
+      source: 'portrait',
+      config_id: 4,
+      model: 'speech-02-hd',
+      gender: 'female',
+      language: 'zh',
+      sample_text: '大家好',
+      synth_provider: 'minimax',
+      synth_voice_id: 'female-shaonv',
+    }),
   }
   const voice = readCharacterVoice(row)
-  assert.equal(voice?.provider, 'minimax')
-  assert.equal(voice?.voice_id, 'female-shaonv')
-  assert.equal(voice?.name, '少女')
+  assert.equal(voice?.provider, 'local')
+  assert.equal(voice?.voice_id, 'local:demo.mp3')
+  assert.equal(voice?.name, '林小雨的参考音色')
   assert.equal(voice?.audio_url, 'static/voice-audio/demo.mp3')
   assert.equal(voice?.clip_url, 'static/voice-clips/demo.mp4')
+  assert.equal(voice?.source, 'portrait')
   assert.equal(voice?.config_id, 4)
   assert.equal(voice?.model, 'speech-02-hd')
   assert.equal(voice?.meta.gender, 'female')
+  assert.equal(JSON.stringify(voice).includes('female-shaonv'), false)
   const presented = presentCharacter(row)
-  assert.equal(presented.voice_id, 'female-shaonv')
+  assert.equal(presented.voice_provider, 'local')
+  assert.equal(presented.voice_id, 'local:demo.mp3')
+  assert.equal(presented.voice_preview_url, 'static/voice-audio/demo.mp3')
   assert.deepEqual(presented.voice, voice)
+  assert.equal(JSON.stringify(presented).includes('female-shaonv'), false)
+
+  const legacy = presentCharacter({
+    voiceProvider: 'minimax',
+    voiceId: 'female-shaonv',
+    voiceName: '少女',
+    voicePreviewUrl: '/static/voice-audio/legacy.mp3',
+    voiceMeta: JSON.stringify({ synth_voice_id: 'zh_female_shuangkuaisisi_moon_bigtts' }),
+  })
+  assert.equal(legacy.voice.provider, 'local')
+  assert.equal(legacy.voice.voice_id, 'local:legacy.mp3')
+  assert.equal(legacy.voice.audio_url, 'static/voice-audio/legacy.mp3')
+  assert.equal(legacy.voice_id, 'local:legacy.mp3')
+  assert.equal(JSON.stringify(legacy).includes('shuangkuaisisi'), false)
+})
+
+test('local reference audio rejects remote urls and provider voice ids', () => {
+  assert.equal(normalizeLocalAudioUrl('/static/uploads/take.wav'), 'static/uploads/take.wav')
+  assert.equal(normalizeLocalAudioUrl('static/voice-audio/demo.mp3'), 'static/voice-audio/demo.mp3')
+  assert.equal(normalizeLocalAudioUrl('https://cdn.example/a.mp3'), null)
+  assert.equal(normalizeLocalAudioUrl('static/voice-audio/../../etc/passwd.mp3'), null)
+  assert.equal(normalizeLocalAudioUrl('static/images/face.png'), null)
+  assert.throws(() => voiceBindFromBody({ provider: 'volcengine', voice_id: 'zh_female_shuangkuaisisi_moon_bigtts' }), /不再绑定远程音色/)
+  assert.throws(() => voiceBindFromBody({}), /请上传或选择本地参考音频/)
+  assert.deepEqual(voiceBindFromBody({ audio_url: 'static/uploads/a.m4a', name: '旁白', source: 'library' }), {
+    audioUrl: 'static/uploads/a.m4a',
+    name: '旁白',
+    source: 'library',
+  })
+})
+
+test('portrait generation picks an internal voice from the character text', () => {
+  assert.equal(inferCharacterGender('女主，长发御姐'), 'female')
+  assert.equal(inferCharacterGender('十岁男孩'), 'child')
+  assert.equal(inferCharacterGender('阳光少年'), 'male')
+  assert.equal(inferCharacterGender(''), 'neutral')
+  for (const provider of ['openai', 'minimax', 'volcengine']) {
+    for (const gender of ['female', 'male', 'neutral', 'child'] as const) {
+      const voice = defaultVoiceFor(provider, gender)
+      assert.equal(catalogFor(provider).some(item => item.id === voice.id), true)
+    }
+  }
+  assert.throws(() => defaultVoiceFor('custom', 'female'), /不支持的语音服务商/)
+})
+
+test('server library keeps one row per audio file and prefers a saved name', () => {
+  const merged = mergeLibraryItems([
+    { audio_url: 'static/voice-audio/demo.mp3', name: '林小雨的参考音色' },
+    { audio_url: '/static/voice-audio/demo.mp3', name: 'demo' },
+    { audio_url: 'https://example.com/nope.mp3', name: '远程' },
+    { audio_url: 'static/uploads/take.wav' },
+  ])
+  assert.deepEqual(merged, [
+    { audio_url: 'static/voice-audio/demo.mp3', name: '林小雨的参考音色' },
+    { audio_url: 'static/uploads/take.wav', name: 'take' },
+  ])
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'huobao-voice-'))
+  fs.mkdirSync(path.join(root, 'voice-audio'))
+  fs.mkdirSync(path.join(root, 'uploads'))
+  fs.writeFileSync(path.join(root, 'voice-audio', 'keep.mp3'), 'mp3')
+  fs.writeFileSync(path.join(root, 'uploads', 'note.txt'), 'no')
+  fs.writeFileSync(path.join(root, 'uploads', 'clip.aac'), 'aac')
+  const files = listStoredAudioFiles(root).map(item => item.audio_url).sort()
+  assert.deepEqual(files, ['static/uploads/clip.aac', 'static/voice-audio/keep.mp3'])
+  fs.rmSync(root, { recursive: true, force: true })
 })
 
 test('preview line uses the character name and caps custom text', () => {
@@ -132,7 +221,7 @@ test('built-in voice catalogs keep unique ids', () => {
   assert.ok(VOLCENGINE_VOICES.some(voice => voice.id === 'zh_female_shuangkuaisisi_moon_bigtts'))
 })
 
-test('shot generation attaches the TTS sample as reference audio, not the talking clip', () => {
+test('shot generation attaches the local reference audio, not the talking clip', () => {
   assert.equal(voiceAudioLimit('volcengine'), 3)
   assert.equal(voiceAudioLimit('minimax'), 3)
   assert.equal(voiceAudioLimit('aliyun'), 5)
