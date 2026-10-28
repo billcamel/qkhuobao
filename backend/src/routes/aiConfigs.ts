@@ -4,7 +4,7 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { success, notFound, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { joinProviderUrl } from '../services/adapters/url.js'
-import { apiKeyProblem, isOfficialProvider, parseConfigTemperature } from '../services/ai.js'
+import { apiKeyProblem, isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../services/ai.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -23,7 +23,27 @@ function withParsedFields(r: any) {
     ...toSnakeCase(r),
     model: r.model ? JSON.parse(r.model) : [],
     temperature: parseConfigTemperature(r.settings),
+    app_id: parseConfigAppId(r.settings),
   }
+}
+
+/** 把 temperature / app_id 合并进 settings JSON。两者都没传时返回 undefined，表示不改 settings。 */
+function mergeSettings(existingRaw: string | null | undefined, body: any): string | null | undefined {
+  if (!('temperature' in body) && !('app_id' in body)) return undefined
+  let settings: Record<string, any> = {}
+  try { settings = existingRaw ? JSON.parse(existingRaw) : {} } catch { settings = {} }
+  if ('temperature' in body) {
+    const temperature = normalizeTemperature(body.temperature)
+    if (temperature === null) delete settings.temperature
+    else settings.temperature = temperature
+  }
+  if ('app_id' in body) {
+    const appId = typeof body.app_id === 'string' ? body.app_id.trim() : ''
+    if (!appId) delete settings.app_id
+    else if (!/^[\x21-\x7e]{1,64}$/.test(appId)) throw new Error('invalid app id')
+    else settings.app_id = appId
+  }
+  return Object.keys(settings).length ? JSON.stringify(settings) : null
 }
 
 function bearerHeaders(apiKey?: string, withJson = false) {
@@ -107,6 +127,38 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
     }
   }
 
+  if (serviceType === 'tts' && p === 'openai') {
+    return {
+      method: 'GET',
+      url: joinProviderUrl(baseUrl, '/v1', '/models'),
+      headers: bearerHeaders(apiKey),
+      body: undefined,
+    }
+  }
+
+  if (serviceType === 'tts' && p === 'minimax') {
+    // 拉系统音色只校验鉴权，不合成、不计语音费用
+    return {
+      method: 'POST',
+      url: joinProviderUrl(baseUrl, '/v1', '/get_voice'),
+      headers: bearerHeaders(apiKey, true),
+      body: { voice_type: 'system' },
+    }
+  }
+
+  if (serviceType === 'tts' && p === 'volcengine') {
+    // 空请求不会合成。豆包语音的鉴权头使用分号：Bearer;token
+    return {
+      method: 'POST',
+      url: joinProviderUrl(baseUrl, '/api/v1', '/tts'),
+      headers: {
+        ...(apiKey ? { Authorization: `Bearer;${apiKey}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: {},
+    }
+  }
+
   return {
     method: 'GET',
     url: joinProviderUrl(baseUrl, '', m ? `/${m}` : '/'),
@@ -151,6 +203,14 @@ app.post('/', async (c) => {
   const keyProblem = apiKeyProblem(body.api_key)
   if (keyProblem) return badRequest(c, keyProblem)
 
+  let settings: string | null = null
+  try {
+    const merged = mergeSettings(null, { temperature, ...('app_id' in body ? { app_id: body.app_id } : {}) })
+    settings = merged ?? null
+  } catch (err: any) {
+    return badRequest(c, err?.message === 'invalid app id' ? 'App ID 含非法字符' : 'temperature 须为 0 到 2 之间的数字')
+  }
+
   const res = await db.insert(schema.aiServiceConfigs).values({
     serviceType: body.service_type,
     provider: body.provider,
@@ -160,7 +220,7 @@ app.post('/', async (c) => {
     model: JSON.stringify(body.model || []),
     priority: body.priority || 0,
     isActive: true,
-    settings: temperature !== null ? JSON.stringify({ temperature }) : null,
+    settings,
     createdAt: ts,
     updatedAt: ts,
   })
@@ -283,19 +343,13 @@ app.put('/:id', async (c) => {
   if ('model' in body) updates.model = JSON.stringify(body.model)
   if ('priority' in body) updates.priority = body.priority
   if ('is_active' in body) updates.isActive = body.is_active
-  if ('temperature' in body) {
-    let temperature: number | null
+  if ('temperature' in body || 'app_id' in body) {
     try {
-      temperature = normalizeTemperature(body.temperature)
-    } catch {
-      return badRequest(c, 'temperature 须为 0 到 2 之间的数字')
+      const settings = mergeSettings(existing.settings, body)
+      if (settings !== undefined) updates.settings = settings
+    } catch (err: any) {
+      return badRequest(c, err?.message === 'invalid app id' ? 'App ID 含非法字符' : 'temperature 须为 0 到 2 之间的数字')
     }
-    // 与已有 settings 合并，清空的 temperature 从 JSON 中移除
-    let settings: Record<string, any> = {}
-    try { settings = existing.settings ? JSON.parse(existing.settings) : {} } catch { settings = {} }
-    if (temperature === null) delete settings.temperature
-    else settings.temperature = temperature
-    updates.settings = Object.keys(settings).length ? JSON.stringify(settings) : null
   }
 
   await db.update(schema.aiServiceConfigs).set(updates).where(eq(schema.aiServiceConfigs.id, id))

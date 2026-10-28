@@ -2,10 +2,10 @@ import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, badRequest, now } from '../utils/response.js'
-import { toSnakeCase } from '../utils/transform.js'
 import { generateImage } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
+import { clearCharacterVoice, previewCharacterVoice, presentCharacter, setCharacterVoice } from '../services/voice/service.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -36,7 +36,7 @@ app.post('/', async (c) => {
     }
   }
   const [row] = await db.select().from(schema.characters).where(eq(schema.characters.id, charId))
-  return created(c, toSnakeCase(row))
+  return created(c, presentCharacter(row))
 })
 
 function characterImagePrompt(char: typeof schema.characters.$inferSelect, stylePrompt = '') {
@@ -68,6 +68,49 @@ app.put('/:id', async (c) => {
   else if (body.finalPrompt !== undefined) updates.finalPrompt = body.finalPrompt || null
   await db.update(schema.characters).set(updates).where(eq(schema.characters.id, id))
   return success(c)
+})
+
+// GET /characters/:id/voice
+app.get('/:id/voice', async (c) => {
+  const id = Number(c.req.param('id'))
+  const [row] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  if (!row || row.deletedAt) return badRequest(c, '角色不存在')
+  return success(c, presentCharacter(row))
+})
+
+// PUT /characters/:id/voice — 绑定音色。换音色时清掉旧试听
+app.put('/:id/voice', async (c) => {
+  const id = Number(c.req.param('id'))
+  try {
+    return success(c, await setCharacterVoice(id, await c.req.json()))
+  } catch (err: any) {
+    return badRequest(c, err?.message || '保存音色失败')
+  }
+})
+
+// DELETE /characters/:id/voice
+app.delete('/:id/voice', async (c) => {
+  const id = Number(c.req.param('id'))
+  try {
+    return success(c, await clearCharacterVoice(id))
+  } catch (err: any) {
+    return badRequest(c, err?.message || '清除音色失败')
+  }
+})
+
+// POST /characters/:id/voice/preview — 合成短试听。传入尚未保存的 voice_id 只返回音频，不改绑定
+app.post('/:id/voice/preview', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    logTaskStart('CharacterVoice', 'preview', { characterId: id, provider: body?.provider })
+    const result = await previewCharacterVoice(id, body)
+    logTaskSuccess('CharacterVoice', 'preview', { characterId: id, saved: result.saved })
+    return success(c, result)
+  } catch (err: any) {
+    logTaskError('CharacterVoice', 'preview', { characterId: id, error: err?.message })
+    return badRequest(c, err?.message || '试听生成失败')
+  }
 })
 
 // DELETE /characters/:id

@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { logTaskProgress, logTaskWarn } from '../utils/task-logger.js'
 import { joinProviderUrl } from './adapters/url.js'
 
-export type ServiceType = 'text' | 'image' | 'video'
+export type ServiceType = 'text' | 'image' | 'video' | 'tts'
 
 export interface AIConfig {
   id?: number
@@ -46,10 +46,23 @@ export function parseConfigTemperature(settingsRaw: string | null | undefined): 
   }
 }
 
+/** 火山引擎语音合成的 App ID，与 API Key（Access Token）分开存放 */
+export function parseConfigAppId(settingsRaw: string | null | undefined): string | null {
+  if (!settingsRaw) return null
+  try {
+    const id = JSON.parse(settingsRaw)?.app_id
+    return typeof id === 'string' && id.trim() ? id.trim() : null
+  } catch {
+    return null
+  }
+}
+
 export const officialProviders: Record<ServiceType, readonly string[]> = {
   text: ['openai', 'gemini', 'volcengine'],
   image: ['openai', 'gemini', 'volcengine'],
   video: ['volcengine', 'minimax', 'aliyun'],
+  // 语音合成是可选服务：不参与出图/出视频，只给角色音色试听和后续配音
+  tts: ['openai', 'minimax', 'volcengine'],
 }
 
 export function isOfficialProvider(serviceType?: string | null, provider?: string | null): boolean {

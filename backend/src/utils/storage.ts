@@ -62,6 +62,16 @@ export async function saveUploadedFile(data: ArrayBuffer, subDir: string, origin
   return `static/${subDir}/${filename}`
 }
 
+/** 保存合成音频等二进制结果，返回与上传文件相同的 static/ 相对路径 */
+export async function saveBinaryFile(data: Buffer, subDir: string, ext: string): Promise<string> {
+  const dir = path.join(STORAGE_ROOT, subDir)
+  fs.mkdirSync(dir, { recursive: true })
+  const suffix = ext.startsWith('.') ? ext : `.${ext}`
+  const filename = `${uuid()}${suffix}`
+  fs.writeFileSync(path.join(dir, filename), data)
+  return `static/${subDir}/${filename}`
+}
+
 function getExtFromUrl(url: string): string {
   try {
     const pathname = new URL(url).pathname

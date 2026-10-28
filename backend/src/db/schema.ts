@@ -62,6 +62,12 @@ export const characters = sqliteTable('characters', {
   seedValue: text('seed_value'),
   sortOrder: integer('sort_order'),
   localPath: text('local_path'),
+  // 角色音色。视频生成不读取；后期配音读 character.voice（services/voice/dubbing-cast.ts）
+  voiceProvider: text('voice_provider'),
+  voiceId: text('voice_id'),
+  voiceName: text('voice_name'),
+  voicePreviewUrl: text('voice_preview_url'),
+  voiceMeta: text('voice_meta'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),

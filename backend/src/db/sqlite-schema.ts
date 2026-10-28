@@ -62,6 +62,11 @@ export const sqliteSchemaStatements = [
     seed_value TEXT,
     sort_order INTEGER,
     local_path TEXT,
+    voice_provider TEXT,
+    voice_id TEXT,
+    voice_name TEXT,
+    voice_preview_url TEXT,
+    voice_meta TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
@@ -495,6 +500,13 @@ export function initSqliteSchema(sqlite: Database.Database) {
   })
   addMissingColumns(sqlite, 'episodes', { board_reference: 'INTEGER DEFAULT 1' })
   addMissingColumns(sqlite, 'dramas', { board_ref_blocked_style: 'TEXT' })
+  addMissingColumns(sqlite, 'characters', {
+    voice_provider: 'TEXT',
+    voice_id: 'TEXT',
+    voice_name: 'TEXT',
+    voice_preview_url: 'TEXT',
+    voice_meta: 'TEXT',
+  })
   // 已出现过故事板参考被真人审核拒绝（自动重提）的项目：补记当前风格，后续含人物的段直接跳过关键帧
   sqlite.exec(`UPDATE dramas SET board_ref_blocked_style = COALESCE(NULLIF(style, ''), '-')
     WHERE board_ref_blocked_style IS NULL

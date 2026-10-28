@@ -5,12 +5,16 @@ import assert from 'node:assert/strict'
 const appRoot = new URL('../app/', import.meta.url)
 const readApp = (path) => readFileSync(new URL(path, appRoot), 'utf8')
 
-const episodePage = readApp('pages/drama/[id]/episode/[episodeNumber].vue')
-const dramaPage = readApp('pages/drama/[id]/index.vue')
+const episodePage = readApp('views/drama/episode.vue')
+const dramaPage = readApp('views/drama/detail.vue')
 const settingsPage = readApp('pages/settings.vue')
 const useApi = readApp('composables/useApi.ts')
+const voiceControl = readApp('components/CharacterVoiceControl.vue')
 
-test('frontend API client no longer exposes TTS or voice endpoints', () => {
+test('frontend API client exposes character voice without the removed TTS pipeline', () => {
+  assert.match(useApi, /characterVoiceAPI/)
+  assert.match(useApi, /\/voices/)
+  assert.match(useApi, /\/voice\/preview/)
   assert.doesNotMatch(useApi, /generateTTS/)
   assert.doesNotMatch(useApi, /voiceSample/)
   assert.doesNotMatch(useApi, /voicesAPI/)
@@ -19,7 +23,8 @@ test('frontend API client no longer exposes TTS or voice endpoints', () => {
   assert.doesNotMatch(useApi, /generate-tts/)
 })
 
-test('episode workbench removes all role voice assignment controls', () => {
+test('episode workbench sets a character voice without the old assignment agent', () => {
+  assert.match(episodePage, /CharacterVoiceControl/)
   assert.doesNotMatch(episodePage, /voice_assigner/)
   assert.doesNotMatch(episodePage, /AI 匹配声音/)
   assert.doesNotMatch(episodePage, /批量试听/)
@@ -32,15 +37,19 @@ test('episode workbench removes all role voice assignment controls', () => {
   assert.doesNotMatch(episodePage, /voiceProfiles/)
   assert.doesNotMatch(episodePage, /audioConfigs/)
   assert.doesNotMatch(episodePage, /voicesAPI/)
+  assert.match(voiceControl, /characterVoiceAPI/)
 })
 
-test('project and settings pages remove audio service configuration', () => {
+test('project and settings pages keep audio service configuration removed and add speech', () => {
   assert.doesNotMatch(dramaPage, /audio_config_id/)
   assert.doesNotMatch(dramaPage, /audioConfigs/)
   assert.doesNotMatch(dramaPage, /音频/)
+  assert.match(dramaPage, /CharacterVoiceControl/)
   assert.doesNotMatch(settingsPage, /voice_assigner/)
   assert.doesNotMatch(settingsPage, /音色分配/)
   assert.doesNotMatch(settingsPage, /serviceTypes[\s\S]*audio/)
   assert.doesNotMatch(settingsPage, /音频/)
   assert.doesNotMatch(settingsPage, /speech-2\.8-hd/)
+  assert.match(settingsPage, /type: 'tts'/)
+  assert.match(settingsPage, /speech-02-hd/)
 })

@@ -28,7 +28,8 @@
     "serviceType": {
       "text": "テキスト",
       "image": "画像",
-      "video": "動画"
+      "video": "動画",
+      "tts": "音声"
     }
   },
   "layout": {
@@ -295,7 +296,8 @@
       "meta": {
         "text": "脚本リライト、キャラクター・シーン抽出、分镜分解などの Agent テキスト能力",
         "image": "キャラクター図、シーン図、ショット図などの静止画生成",
-        "video": "ショット動画の直接生成（デフォルト Seedance 2.0）"
+        "video": "ショット動画の直接生成（デフォルト Seedance 2.0）",
+        "tts": "キャラクター音色の試聴と、後のアフレコが読む音色。任意で、画像と動画には影響しません"
       }
     },
     "styles": {
@@ -410,7 +412,10 @@
       "reachable": "エンドポイントが応答しました",
       "unreachable": "エンドポイントのテストに失敗しました",
       "providerRequired": "プロバイダーを選択してください",
-      "tempInvalid": "Temperature は 0〜2 の数値で入力してください"
+      "tempInvalid": "Temperature は 0〜2 の数値で入力してください",
+      "appId": "App ID",
+      "appIdHint": "火山エンジン音声合成の App ID。API Key には Access Token を入れます。両者は別の値です。",
+      "volcengineClusterHint": "豆包音声のモデル名は cluster です。大モデル音色は通常 volcano_tts です。"
     },
     "styleDialog": {
       "editTitle": "スタイルプリセットを編集",
@@ -558,6 +563,41 @@
       "lighting": "光照 · ",
       "appearanceTodo": "外見未入力",
       "stylingTodo": "スタイリング未入力",
+      "voice": {
+        "label": "音色",
+        "unset": "未設定",
+        "pick": "選択",
+        "change": "変更",
+        "clear": "解除",
+        "preview": "試聴",
+        "stop": "停止",
+        "previewing": "試聴を生成中…",
+        "saved": "音色を更新しました",
+        "cleared": "音色を解除しました",
+        "previewReady": "試聴を生成しました",
+        "previewFailed": "試聴の生成に失敗しました",
+        "saveFailed": "音色を保存できませんでした",
+        "clearFailed": "音色を解除できませんでした",
+        "empty": "使える音色がありません。設定で「音声」サービスを追加して有効にしてください。",
+        "goSettings": "設定へ",
+        "dialogTitle": "音色を選択",
+        "dialogSub": "{name}の音色です。試聴では保存されず、「使用」で保存されます。",
+        "search": "名前または ID で検索",
+        "apply": "使用",
+        "applied": "現在",
+        "noMatch": "一致する音色がありません",
+        "custom": "カスタム音色 ID",
+        "customId": "音色 ID",
+        "customName": "表示名（任意）",
+        "customHint": "一覧にないクローン音色は、プロバイダの voice id を入力します。",
+        "narrators": "ナレーション",
+        "gender": {
+          "female": "女",
+          "male": "男",
+          "neutral": "中性",
+          "child": "子"
+        }
+      },
       "sceneDescTodo": "シーン説明未入力",
       "sceneLightTodo": "シーン光影未入力",
       "noDescription": "説明がありません",

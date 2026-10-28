@@ -11,6 +11,7 @@ import episodes from './routes/episodes.js'
 import storyboards from './routes/storyboards.js'
 import scenes from './routes/scenes.js'
 import characters from './routes/characters.js'
+import voices from './routes/voices.js'
 import tasks from './routes/tasks.js'
 import upload from './routes/upload.js'
 import aiConfigs, { aiProviders } from './routes/aiConfigs.js'
@@ -55,6 +56,7 @@ api.route('/episodes', episodes)
 api.route('/storyboards', storyboards)
 api.route('/scenes', scenes)
 api.route('/characters', characters)
+api.route('/voices', voices)
 api.route('/tasks', tasks)
 api.route('/upload', upload)
 api.route('/ai-configs', aiConfigs)

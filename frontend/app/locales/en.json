@@ -28,7 +28,8 @@
     "serviceType": {
       "text": "Text",
       "image": "Image",
-      "video": "Video"
+      "video": "Video",
+      "tts": "Speech"
     }
   },
   "layout": {
@@ -295,7 +296,8 @@
       "meta": {
         "text": "Text capabilities: script rewriting, asset extraction, storyboard breaking",
         "image": "Static image generation: characters, scenes and shots",
-        "video": "Direct video generation, Seedance 2.0 by default"
+        "video": "Direct video generation, Seedance 2.0 by default",
+        "tts": "Character voice preview, and the voice later dubbing will read. Optional — images and video are unaffected"
       }
     },
     "styles": {
@@ -410,7 +412,10 @@
       "reachable": "Endpoint responded",
       "unreachable": "Endpoint failed the test",
       "providerRequired": "Select a provider",
-      "tempInvalid": "Temperature must be a number between 0 and 2"
+      "tempInvalid": "Temperature must be a number between 0 and 2",
+      "appId": "App ID",
+      "appIdHint": "Volcengine speech App ID. Put the access token in API Key — they are not the same value.",
+      "volcengineClusterHint": "For Doubao speech the model name is the cluster. Large-model voices usually use volcano_tts."
     },
     "styleDialog": {
       "editTitle": "Edit Style Preset",
@@ -558,6 +563,41 @@
       "lighting": "Lighting · ",
       "appearanceTodo": "Appearance TBD",
       "stylingTodo": "Styling TBD",
+      "voice": {
+        "label": "Voice",
+        "unset": "Not set",
+        "pick": "Choose",
+        "change": "Change",
+        "clear": "Clear",
+        "preview": "Preview",
+        "stop": "Stop",
+        "previewing": "Making preview…",
+        "saved": "Voice updated",
+        "cleared": "Voice cleared",
+        "previewReady": "Preview ready",
+        "previewFailed": "Preview failed",
+        "saveFailed": "Could not save voice",
+        "clearFailed": "Could not clear voice",
+        "empty": "No voices yet. Add and enable a Speech service in Settings.",
+        "goSettings": "Open settings",
+        "dialogTitle": "Choose a voice",
+        "dialogSub": "Pick a voice for {name}. Preview does not save; Use does.",
+        "search": "Search name or ID",
+        "apply": "Use",
+        "applied": "Current",
+        "noMatch": "No matching voices",
+        "custom": "Custom voice ID",
+        "customId": "Voice ID",
+        "customName": "Display name (optional)",
+        "customHint": "For a cloned voice that is not in the list, enter the provider voice id.",
+        "narrators": "Narration",
+        "gender": {
+          "female": "F",
+          "male": "M",
+          "neutral": "N",
+          "child": "Child"
+        }
+      },
       "sceneDescTodo": "Scene description TBD",
       "sceneLightTodo": "Scene lighting TBD",
       "noDescription": "No description",
