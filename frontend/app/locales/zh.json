@@ -576,7 +576,7 @@
         "saveFailed": "保存参考音频失败",
         "clearFailed": "清除参考音频失败",
         "goSettings": "去设置",
-        "dialogTitle": "参考音色",
+        "dialogTitle": "音色设置",
         "dialogSub": "为{name}上传或选择本地参考音频，也可以根据形象照生成。保存后的音频会作为后续镜头的参考音色。",
         "upload": "上传参考音频",
         "uploading": "上传中…",
@@ -598,7 +598,8 @@
         "regenClip": "重做说话视频",
         "clipReady": "说话视频已生成",
         "previewFailed": "说话视频生成失败",
-        "narrators": "旁白"
+        "narrators": "旁白",
+        "generateFromPortrait": "根据形象照生成音色"
       },
       "sceneDescTodo": "场景描述待补充",
       "sceneLightTodo": "场景光影待补充",

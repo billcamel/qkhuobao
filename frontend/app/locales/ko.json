@@ -576,7 +576,7 @@
         "saveFailed": "참조 오디오를 저장하지 못했습니다",
         "clearFailed": "참조 오디오를 지우지 못했습니다",
         "goSettings": "설정으로",
-        "dialogTitle": "참조 음색",
+        "dialogTitle": "음성 설정",
         "dialogSub": "{name}의 로컬 참조 오디오를 올리거나 고르고, 또는 캐릭터 이미지로 생성합니다. 저장된 파일은 이후 샷의 참조 음색으로 씁니다.",
         "upload": "참조 오디오 업로드",
         "uploading": "업로드 중…",
@@ -598,7 +598,8 @@
         "regenClip": "말하기 영상 다시 만들기",
         "clipReady": "말하기 영상을 생성했습니다",
         "previewFailed": "말하기 영상 생성에 실패했습니다",
-        "narrators": "내레이션"
+        "narrators": "내레이션",
+        "generateFromPortrait": "이미지로 음성 생성"
       },
       "sceneDescTodo": "장면 설명 미입력",
       "sceneLightTodo": "장면 조명 미입력",

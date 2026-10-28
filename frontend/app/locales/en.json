@@ -576,7 +576,7 @@
         "saveFailed": "Could not save reference audio",
         "clearFailed": "Could not clear reference audio",
         "goSettings": "Open settings",
-        "dialogTitle": "Reference voice",
+        "dialogTitle": "Voice settings",
         "dialogSub": "Upload or pick a local reference audio for {name}, or generate one from the portrait. The saved file is reused as the shot reference voice.",
         "upload": "Upload reference audio",
         "uploading": "Uploading…",
@@ -598,7 +598,8 @@
         "regenClip": "Redo speaking video",
         "clipReady": "Speaking video ready",
         "previewFailed": "Speaking video failed",
-        "narrators": "Narration"
+        "narrators": "Narration",
+        "generateFromPortrait": "Generate voice from portrait"
       },
       "sceneDescTodo": "Scene description TBD",
       "sceneLightTodo": "Scene lighting TBD",

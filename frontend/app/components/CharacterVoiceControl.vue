@@ -23,11 +23,11 @@
       <Clapperboard :size="12" />
     </button>
     <button
-      v-if="audioUrl"
+      v-if="hasImage"
       type="button"
       class="btn btn-sm"
-      :title="hasImage ? '' : t('episode.asset.voice.needImage')"
-      :disabled="!hasImage || generatingClip"
+      :title="t('episode.asset.voice.generateClip')"
+      :disabled="generatingClip"
       @click="generateClip"
     >
       <Loader2 v-if="generatingClip" :size="11" class="animate-spin" />
@@ -35,16 +35,6 @@
     </button>
     <button type="button" class="btn btn-sm" @click="openPicker">
       {{ voice ? t('episode.asset.voice.change') : t('episode.asset.voice.pick') }}
-    </button>
-    <button
-      type="button"
-      class="btn btn-sm"
-      :title="hasImage ? t('episode.asset.voice.generate') : t('episode.asset.voice.needImage')"
-      :disabled="!hasImage || generatingAudio"
-      @click="generateFromPortrait"
-    >
-      <Loader2 v-if="generatingAudio" :size="11" class="animate-spin" />
-      {{ generatingAudio ? t('episode.asset.voice.generating') : (voice ? t('episode.asset.voice.regen') : t('episode.asset.voice.generate')) }}
     </button>
     <button
       v-if="voice"
@@ -84,7 +74,7 @@
                 @click="generateFromPortrait"
               >
                 <Loader2 v-if="generatingAudio" :size="11" class="animate-spin" />
-                {{ generatingAudio ? t('episode.asset.voice.generating') : t('episode.asset.voice.generate') }}
+                {{ generatingAudio ? t('episode.asset.voice.generating') : t('episode.asset.voice.generateFromPortrait') }}
               </button>
             </div>
             <input

@@ -576,7 +576,7 @@
         "saveFailed": "参考音声を保存できませんでした",
         "clearFailed": "参考音声を解除できませんでした",
         "goSettings": "設定へ",
-        "dialogTitle": "参考音色",
+        "dialogTitle": "音声設定",
         "dialogSub": "{name}のローカル参考音声をアップロードまたは選択するか、キャラクター画像から生成します。保存した音声は後のショットの参考音色になります。",
         "upload": "参考音声をアップロード",
         "uploading": "アップロード中…",
@@ -598,7 +598,8 @@
         "regenClip": "発話動画をやり直す",
         "clipReady": "発話動画を生成しました",
         "previewFailed": "発話動画の生成に失敗しました",
-        "narrators": "ナレーション"
+        "narrators": "ナレーション",
+        "generateFromPortrait": "立ち絵から音声を生成"
       },
       "sceneDescTodo": "シーン説明未入力",
       "sceneLightTodo": "シーン光影未入力",
