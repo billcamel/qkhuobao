@@ -267,7 +267,7 @@ async function processTask(id: number, config: AIConfig) {
       const resolvedReferenceImageUrls = await normalizeVideoReferenceUrls(params.referenceImageUrls)
       // 参考视频/音频文件较大，不适合 dataURL 内联，需解析为公网可访问 URL
       const resolvedReferenceVideoUrls = resolvePublicMediaUrls(params.referenceVideoUrls, 'video')
-      const resolvedReferenceAudioUrls = resolvePublicMediaUrls(params.referenceAudioUrls, 'audio')
+      const resolvedReferenceAudioUrls = resolveOptionalAudioUrls(params.referenceAudioUrls)
       const resolvedReferenceFileUrl = resolvePublicMediaUrl(params.referenceFileUrl, 'file')
       ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
         id: record.id,
@@ -831,6 +831,28 @@ function resolvePublicMediaUrl(value: string | null | undefined, kind: 'video' |
     )
   }
   return raw
+}
+
+/**
+ * 参考音频是可选增强：解析失败（文件丢失/过大/路径异常）就丢掉这条音频，
+ * 让视频模型自己出声，不阻塞生成流程。
+ */
+function resolveOptionalAudioUrls(refs: string[] | null | undefined): string[] {
+  if (!Array.isArray(refs) || !refs.length) return []
+  const out: string[] = []
+  for (const item of Array.from(new Set(refs.map(v => String(v || '').trim()).filter(Boolean)))) {
+    try {
+      const url = resolvePublicMediaUrl(item, 'audio')
+      if (url) out.push(url)
+    } catch (err) {
+      logTaskWarn('VideoTask', 'reference-audio-resolve-failed', {
+        value: item,
+        error: (err as Error).message,
+        fallback: 'model-generated audio',
+      })
+    }
+  }
+  return out
 }
 
 function resolvePublicMediaUrls(refs: string[] | null | undefined, kind: 'video' | 'audio'): string[] {

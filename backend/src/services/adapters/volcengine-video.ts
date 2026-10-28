@@ -16,6 +16,7 @@ import type {
   VideoPollResponse,
 } from './types'
 import { joinProviderUrl } from './url'
+import { logTaskWarn } from '../../utils/task-logger.js'
 
 /** 仅支持 Seedance 2.0+ 系列（前缀匹配，兼容未来 2.0.x 变体） */
 const SEEDANCE2_MODEL_PREFIX = 'doubao-seedance-2-0'
@@ -46,13 +47,19 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
     const prompt = (record.prompt || '').trim()
     const refImages = parseUrlArray(record.referenceImageUrls)
     const refVideos = parseUrlArray(record.referenceVideoUrls)
-    const refAudios = parseUrlArray(record.referenceAudioUrls)
+    let refAudios = parseUrlArray(record.referenceAudioUrls)
 
     if (refImages.length > REF_LIMITS.images || refVideos.length > REF_LIMITS.videos || refAudios.length > REF_LIMITS.audios) {
       throw new Error(`参考素材超限：图片≤${REF_LIMITS.images}、视频≤${REF_LIMITS.videos}、音频≤${REF_LIMITS.audios}`)
     }
+    // 音色参考是可选增强：没有参考图/视频时上游会拒收音频，
+    // 这种情况直接丢掉音频、让视频模型自己出声，不阻塞整条生成流程
     if (refAudios.length > 0 && refImages.length + refVideos.length === 0) {
-      throw new Error('参考音频需要至少 1 个参考图片或视频')
+      logTaskWarn('VideoTask', 'reference-audio-skipped', {
+        reason: 'no reference image/video, fallback to model-generated audio',
+        audios: refAudios.length,
+      })
+      refAudios = []
     }
     if (!prompt && !refImages.length && !refVideos.length && !refAudios.length) {
       throw new Error('多模态参考模式需要至少一个参考素材或 prompt')
