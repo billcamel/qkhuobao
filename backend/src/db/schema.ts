@@ -62,7 +62,8 @@ export const characters = sqliteTable('characters', {
   seedValue: text('seed_value'),
   sortOrder: integer('sort_order'),
   localPath: text('local_path'),
-  // 角色音色。镜头生成读 voice_preview_url 作为 reference_audio；voice_clip_url 只给资产页试听
+  // 角色参考音色。镜头生成读 voice_preview_url 作为 reference_audio；voice_clip_url 只给资产页试听。
+  // voice_id 存本地资产键（local:文件名），不是服务商音色目录里的 ID。
   voiceProvider: text('voice_provider'),
   voiceId: text('voice_id'),
   voiceName: text('voice_name'),

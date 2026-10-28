@@ -3,7 +3,7 @@
  *
  * 视频生成和 FFmpeg 拼接都不做语音合成。后续导出/配音（含仓库外的配音脚本）
  * 读取本函数或角色对象上的 voice，不必再改表。
- * voice 为 null 表示该角色还没指定音色。
+ * voice 为 null 表示该角色还没有本地参考音频。
  */
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../../db/index.js'

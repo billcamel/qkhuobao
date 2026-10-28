@@ -2,7 +2,7 @@ import type { AIConfig } from '../ai.js'
 
 export type VoiceGender = 'female' | 'male' | 'neutral' | 'child'
 
-/** 目录或服务商实时列表里的一条音色 */
+/** 内部合成用的一条音色。用户不从目录里挑选。 */
 export interface VoiceOption {
   id: string
   name: string
@@ -11,19 +11,22 @@ export interface VoiceOption {
   description?: string
 }
 
+export type VoiceSource = 'upload' | 'library' | 'portrait'
+
 /**
- * 角色上持久化的音色。
- * audio_url 是 TTS 样本，镜头生成时作为 reference_audio。
+ * 角色上持久化的参考音色。
+ * audio_url 是服务器上的参考音频，镜头生成时作为 reference_audio。
  * clip_url 是口型说话短视频，只在资产页播放，不传给镜头。
+ * provider / voice_id 表示本地资产，不是 MiniMax、豆包或 OpenAI 的音色 ID。
  */
 export interface CharacterVoice {
-  provider: string
+  provider: 'local'
+  /** 本地资产键，形如 local:xxx.mp3 */
   voice_id: string
   name: string
-  /** TTS 样本。镜头的 reference_audio */
-  audio_url: string | null
-  /** 口型试听视频。资产页播放 */
+  audio_url: string
   clip_url: string | null
+  source: VoiceSource | null
   config_id: number | null
   model: string | null
   meta: {

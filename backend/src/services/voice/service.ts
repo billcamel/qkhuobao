@@ -1,16 +1,27 @@
 import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../../db/index.js'
-import { getActiveConfig, isOfficialProvider, parseConfigTemperature } from '../ai.js'
+import { getActiveConfig, isOfficialProvider, parseConfigTemperature, type AIConfig } from '../ai.js'
 import { saveBinaryFile } from '../../utils/storage.js'
 import { generateVideo } from '../generation.js'
 import { talkingClipPrompt, talkingClipRequest } from './talking-clip.js'
 import { now } from '../../utils/response.js'
 import { getVoiceAdapter } from './adapters.js'
-import { clearedVoiceColumns, presentCharacter, previewTextFor, readCharacterVoice, voiceColumnValues } from './binding.js'
+import { clearedVoiceColumns, parseVoiceMeta, presentCharacter, previewTextFor, voiceColumnValues } from './binding.js'
+import { defaultVoiceFor, inferCharacterGender } from './catalog.js'
 import { dubbingCastForEpisode } from './dubbing-cast.js'
-import type { VoiceConfig, VoiceOption } from './types.js'
+import {
+  audioDisplayName,
+  listStoredAudioFiles,
+  localAudioExists,
+  localVoiceKey,
+  mergeLibraryItems,
+  normalizeLocalAudioUrl,
+  voiceBindFromBody,
+} from './local-audio.js'
+import type { VoiceConfig } from './types.js'
 
-export { dubbingCastForEpisode, presentCharacter, readCharacterVoice }
+export { presentCharacter, readCharacterVoice } from './binding.js'
+export { dubbingCastForEpisode }
 
 function rowToVoiceConfig(row: typeof schema.aiServiceConfigs.$inferSelect): VoiceConfig {
   const models = row.model ? JSON.parse(row.model) : []
@@ -33,45 +44,15 @@ export async function listTtsConfigs(): Promise<VoiceConfig[]> {
     .map(rowToVoiceConfig)
 }
 
-function publicVoice(provider: string, voice: VoiceOption) {
-  return {
-    voice_id: voice.id,
-    name: voice.name,
-    gender: voice.gender,
-    language: voice.language,
-    description: voice.description || '',
-    provider,
-  }
-}
-
-export async function listAvailableVoices() {
-  const configs = await listTtsConfigs()
-  const providers = []
-  for (const config of configs) {
-    const adapter = getVoiceAdapter(config.provider)
-    let voices = adapter.catalog
-    let source: 'live' | 'catalog' = 'catalog'
-    if (adapter.listVoices && config.apiKey) {
-      try {
-        const live = await adapter.listVoices(config)
-        if (live?.length) {
-          voices = live
-          source = 'live'
-        }
-      } catch {
-        source = 'catalog'
-      }
-    }
-    providers.push({
-      config_id: config.id,
-      provider: config.provider,
-      name: config.name,
-      model: config.model,
-      source,
-      voices: voices.map(voice => publicVoice(config.provider, voice)),
-    })
-  }
-  return { configured: providers.length > 0, providers }
+/** 服务器上已有的参考音频：角色已保存的优先带上名字，再补 voice-audio / uploads 里的文件。 */
+export async function listLocalReferenceAudios() {
+  const rows = await db.select().from(schema.characters)
+  const saved = rows
+    .filter(row => !row.deletedAt && row.voicePreviewUrl)
+    .map(row => ({ audio_url: String(row.voicePreviewUrl), name: row.voiceName }))
+  const items = mergeLibraryItems([...saved, ...listStoredAudioFiles()])
+    .filter(item => localAudioExists(item.audio_url))
+  return { items }
 }
 
 async function requireCharacter(id: number) {
@@ -80,47 +61,36 @@ async function requireCharacter(id: number) {
   return row
 }
 
-function findKnownVoice(provider: string, voiceId: string) {
-  return getVoiceAdapter(provider).catalog.find(voice => voice.id === voiceId) || null
+function characterGenderText(row: { name?: string | null; role?: string | null; appearance?: string | null; description?: string | null; styling?: string | null }) {
+  return [row.role, row.appearance, row.description, row.styling, row.name]
+    .map(part => String(part || '').trim())
+    .filter(Boolean)
+    .join('\n')
 }
 
 export async function setCharacterVoice(id: number, body: any) {
   const row = await requireCharacter(id)
-  const provider = String(body?.provider || '').trim().toLowerCase()
-  const voiceId = String(body?.voice_id ?? body?.voiceId ?? '').trim()
-  if (!isOfficialProvider('tts', provider)) throw new Error('不支持的语音服务商')
-  if (!voiceId || voiceId.length > 128) throw new Error('音色 ID 无效')
-
-  const configs = await listTtsConfigs()
-  const requestedConfigId = Number(body?.config_id ?? body?.configId)
-  let config = Number.isFinite(requestedConfigId)
-    ? configs.find(item => item.id === requestedConfigId) || null
-    : null
-  if (requestedConfigId && !config) throw new Error('语音配置不存在或未启用')
-  if (config && config.provider !== provider) throw new Error('该语音配置与音色服务商不一致')
-  if (!config) config = configs.find(item => item.provider === provider) || null
-
-  const known = findKnownVoice(provider, voiceId)
-  const voiceName = String(body?.voice_name ?? body?.voiceName ?? '').trim() || known?.name || voiceId
-  const sameVoice = row.voiceProvider === provider && row.voiceId === voiceId
+  const bind = voiceBindFromBody(body)
+  if (!localAudioExists(bind.audioUrl)) throw new Error('参考音频不存在或已删除')
+  const previous = normalizeLocalAudioUrl(row.voicePreviewUrl || '')
+  const same = previous === bind.audioUrl
+  const previousMeta = parseVoiceMeta(row.voiceMeta)
+  const meta: Record<string, unknown> = {
+    source: bind.source,
+    sample_text: same && typeof previousMeta.sample_text === 'string' ? previousMeta.sample_text : null,
+  }
+  if (same && Number(previousMeta.clip_task_id) > 0) meta.clip_task_id = Number(previousMeta.clip_task_id)
   await db.update(schema.characters).set({
     ...voiceColumnValues({
-      provider,
-      voiceId,
-      voiceName,
-      clipUrl: sameVoice ? row.voiceClipUrl : null,
-      audioUrl: sameVoice ? row.voicePreviewUrl : null,
-      meta: {
-        config_id: config?.id ?? null,
-        model: config?.model || null,
-        gender: known?.gender || null,
-        language: known?.language || null,
-        description: known?.description || null,
-      },
+      provider: 'local',
+      voiceId: localVoiceKey(bind.audioUrl),
+      voiceName: audioDisplayName(bind.audioUrl, bind.name),
+      clipUrl: same ? row.voiceClipUrl : null,
+      audioUrl: bind.audioUrl,
+      meta,
     }),
     updatedAt: now(),
   }).where(eq(schema.characters.id, id))
-
   const [fresh] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
   return presentCharacter(fresh)
 }
@@ -133,89 +103,177 @@ export async function clearCharacterVoice(id: number) {
   return presentCharacter(fresh)
 }
 
-async function resolveSynthConfig(provider: string, configId: number | null): Promise<VoiceConfig> {
-  const configs = await listTtsConfigs()
-  const pinned = configId ? configs.find(item => item.id === configId && item.provider === provider) : null
-  const config = pinned || configs.find(item => item.provider === provider) || null
-  if (!config) throw new Error('未配置该服务商的语音合成，请到设置页添加并启用')
-  if (!config.apiKey) throw new Error('语音合成配置缺少 API Key')
-  return config
+function clipTaskMatches(raw: string | null, voiceKey: string) {
+  try {
+    const params = JSON.parse(raw || '{}')
+    if (params.purpose !== 'voice_clip') return false
+    return !params.voiceId || params.voiceId === voiceKey
+  } catch {
+    return false
+  }
 }
 
-export async function previewCharacterVoice(id: number, body: any = {}) {
-  let row = await requireCharacter(id)
-  const image = row.imageUrl || row.localPath || ''
-  if (!String(image).trim()) throw new Error('请先生成角色形象，再生成说话视频')
+async function dramaAspectRatio(dramaId: number | null | undefined) {
+  if (!dramaId) return null
+  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, dramaId))
+  return drama?.aspectRatio ?? null
+}
 
-  let bound = readCharacterVoice(row)
-  const requestedProvider = String(body?.provider || '').trim().toLowerCase()
-  const requestedVoiceId = String(body?.voice_id ?? body?.voiceId ?? '').trim()
-  if (requestedProvider && requestedVoiceId && (requestedProvider !== bound?.provider || requestedVoiceId !== bound?.voice_id)) {
-    await setCharacterVoice(id, body)
-    row = await requireCharacter(id)
-    bound = readCharacterVoice(row)
-  }
-  const provider = bound?.provider || ''
-  const voiceId = bound?.voice_id || ''
-  if (!isOfficialProvider('tts', provider) || !voiceId) throw new Error('请先为角色选择音色')
-
-  const requestedConfigId = Number(body?.config_id ?? body?.configId)
-  const configId = Number.isFinite(requestedConfigId) && requestedConfigId > 0
-    ? requestedConfigId
-    : bound?.config_id ?? null
-  const config = await resolveSynthConfig(provider, configId)
-  const pending = (await db.select().from(schema.sysTask).where(and(
-    eq(schema.sysTask.characterId, id),
-    eq(schema.sysTask.type, 'video'),
-    eq(schema.sysTask.status, 'processing'),
-  ))).find(task => {
-    try { return JSON.parse(task.params || '{}').purpose === 'voice_clip' } catch { return false }
-  })
-  if (pending) {
-    return { task_id: pending.id, status: 'processing', character: presentCharacter(row) }
-  }
-
-  const videoConfig = await getActiveConfig('video')
-  if (!videoConfig) throw new Error('未配置视频模型，请先到设置页添加并启用')
-
-  const text = previewTextFor(row.name, body?.text)
-  const audio = await getVoiceAdapter(provider).synthesize(config, { voiceId, text })
-  const audioPath = await saveBinaryFile(audio, 'voice-audio', '.mp3')
-  const prompt = talkingClipPrompt(row.name, text)
-  // 画幅跟随项目设置（短剧默认竖屏），不再硬编码 16:9
-  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, row.dramaId))
-  const clipRequest = talkingClipRequest(videoConfig.provider, image, audioPath, prompt, drama?.aspectRatio ?? null)
-  const taskId = await generateVideo({
-    characterId: id,
-    dramaId: row.dramaId,
-    configId: videoConfig.id,
-    voiceId,
-    ...clipRequest,
-  })
-
-  const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, taskId))
-  const meta = {
-    config_id: config.id ?? bound?.config_id ?? null,
-    model: config.model || bound?.model || null,
-    gender: bound?.meta.gender || null,
-    language: bound?.meta.language || null,
-    description: bound?.meta.description || null,
-    sample_text: text,
-    audio_url: audioPath,
-    ...(task?.status === 'processing' ? { clip_task_id: taskId } : {}),
-  }
+async function mergeClipMeta(id: number, sampleText: string, taskId: number | null) {
+  const [row] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  if (!row) return
+  const meta = parseVoiceMeta(row.voiceMeta)
+  meta.sample_text = sampleText
+  if (taskId) meta.clip_task_id = taskId
+  else delete meta.clip_task_id
   await db.update(schema.characters).set({
-    voicePreviewUrl: audioPath,
     voiceMeta: JSON.stringify(meta),
     updatedAt: now(),
   }).where(eq(schema.characters.id, id))
+}
 
+function unknownVoiceError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '')
+  return /voice|speaker|音色|voice_id|voice type|not exist|not found|invalid|denied/i.test(message)
+}
+
+async function synthesizeReference(config: VoiceConfig, voiceId: string, fallbackId: string, text: string) {
+  const adapter = getVoiceAdapter(config.provider)
+  try {
+    return { audio: await adapter.synthesize(config, { voiceId, text }), voiceId }
+  } catch (err) {
+    if (!fallbackId || voiceId === fallbackId || !unknownVoiceError(err)) throw err
+    return { audio: await adapter.synthesize(config, { voiceId: fallbackId, text }), voiceId: fallbackId }
+  }
+}
+
+/** 用已保存的参考音频和形象照做口型试听。不重新选音色，也不再合成一条新的参考音频。 */
+async function enqueueTalkingClip(
+  row: typeof schema.characters.$inferSelect,
+  audioUrl: string,
+  text: string,
+  videoConfig: AIConfig,
+) {
+  const image = String(row.imageUrl || row.localPath || '').trim()
+  let voiceKey = String(row.voiceId || '').trim() || localVoiceKey(audioUrl)
+  const processing = await db.select().from(schema.sysTask).where(and(
+    eq(schema.sysTask.characterId, row.id),
+    eq(schema.sysTask.type, 'video'),
+    eq(schema.sysTask.status, 'processing'),
+  ))
+  const pending = processing.find(task => clipTaskMatches(task.params, voiceKey))
+  if (pending) {
+    await mergeClipMeta(row.id, text, pending.id)
+    return { taskId: pending.id, status: 'processing' as const }
+  }
+  const assetKey = localVoiceKey(audioUrl)
+  if (voiceKey !== assetKey) {
+    voiceKey = assetKey
+    await db.update(schema.characters).set({
+      voiceProvider: 'local',
+      voiceId: assetKey,
+      updatedAt: now(),
+    }).where(eq(schema.characters.id, row.id))
+  }
+  const prompt = talkingClipPrompt(row.name, text)
+  const clipRequest = talkingClipRequest(videoConfig.provider, image, audioUrl, prompt, await dramaAspectRatio(row.dramaId))
+  const taskId = await generateVideo({
+    characterId: row.id,
+    dramaId: row.dramaId,
+    configId: videoConfig.id,
+    voiceId: voiceKey,
+    ...clipRequest,
+  })
+  const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, taskId))
+  await mergeClipMeta(row.id, text, task?.status === 'processing' ? taskId : null)
+  return { taskId, status: task?.status || 'processing' }
+}
+
+export async function previewCharacterVoice(id: number, body: any = {}) {
+  const row = await requireCharacter(id)
+  const image = String(row.imageUrl || row.localPath || '').trim()
+  if (!image) throw new Error('请先生成角色形象，再生成说话视频')
+  const audioUrl = normalizeLocalAudioUrl(row.voicePreviewUrl)
+  if (!audioUrl) throw new Error('请先保存参考音频，再生成说话视频')
+  if (!localAudioExists(audioUrl)) throw new Error('参考音频不存在或已删除')
+  const videoConfig = await getActiveConfig('video')
+  if (!videoConfig) throw new Error('未配置视频模型，请先到设置页添加并启用')
+  const meta = parseVoiceMeta(row.voiceMeta)
+  const text = previewTextFor(row.name, body?.text || (typeof meta.sample_text === 'string' ? meta.sample_text : ''))
+  const started = await enqueueTalkingClip(row, audioUrl, text, videoConfig)
+  const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, started.taskId))
   const [fresh] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
   return {
-    task_id: taskId,
-    status: task?.status || 'processing',
+    task_id: started.taskId,
+    status: task?.status || started.status,
     error: task?.status === 'failed' ? task.errorMsg : null,
     text,
     character: presentCharacter(fresh),
+  }
+}
+
+/** 按形象照生成一条参考音频并保存到本地。语音服务只在内部合成，用户不指定远程音色 ID。 */
+export async function generateCharacterVoiceFromPortrait(id: number, body: any = {}) {
+  const row = await requireCharacter(id)
+  const image = String(row.imageUrl || row.localPath || '').trim()
+  if (!image) throw new Error('请先生成角色形象，再根据形象照生成音色')
+
+  const configs = await listTtsConfigs()
+  const previous = parseVoiceMeta(row.voiceMeta)
+  const pinnedId = Number(previous.config_id)
+  const config = (Number.isFinite(pinnedId) ? configs.find(item => item.id === pinnedId) : null) || configs[0]
+  if (!config) throw new Error('未配置语音合成，请到设置页添加并启用')
+  if (!config.apiKey) throw new Error('语音合成配置缺少 API Key')
+
+  const gender = inferCharacterGender(characterGenderText(row))
+  const fallback = defaultVoiceFor(config.provider, gender)
+  const storedVoiceId = previous.synth_provider === config.provider && typeof previous.synth_voice_id === 'string'
+    ? previous.synth_voice_id.trim()
+    : ''
+  const text = previewTextFor(row.name, body?.text)
+  const synthesized = await synthesizeReference(config, storedVoiceId || fallback.id, fallback.id, text)
+  const audioPath = await saveBinaryFile(synthesized.audio, 'voice-audio', '.mp3')
+  const voiceName = audioDisplayName(audioPath, row.name ? `${row.name}的参考音色` : '形象照参考音色')
+  await db.update(schema.characters).set({
+    ...voiceColumnValues({
+      provider: 'local',
+      voiceId: localVoiceKey(audioPath),
+      voiceName,
+      clipUrl: null,
+      audioUrl: audioPath,
+      meta: {
+        source: 'portrait',
+        config_id: config.id ?? null,
+        model: config.model || null,
+        gender,
+        sample_text: text,
+        synth_provider: config.provider,
+        synth_voice_id: synthesized.voiceId,
+      },
+    }),
+    updatedAt: now(),
+  }).where(eq(schema.characters.id, id))
+
+  let taskId: number | null = null
+  let status = 'saved'
+  let clipError: string | null = null
+  const videoConfig = await getActiveConfig('video')
+  if (videoConfig) {
+    try {
+      const fresh = await requireCharacter(id)
+      const started = await enqueueTalkingClip(fresh, audioPath, text, videoConfig)
+      taskId = started.taskId
+      status = started.status
+    } catch (err: any) {
+      clipError = err?.message || '说话视频生成失败'
+    }
+  }
+  const [done] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  return {
+    task_id: taskId,
+    status,
+    clip_error: clipError,
+    text,
+    character: presentCharacter(done),
   }
 }
