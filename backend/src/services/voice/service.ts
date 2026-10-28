@@ -182,7 +182,9 @@ export async function previewCharacterVoice(id: number, body: any = {}) {
   const audio = await getVoiceAdapter(provider).synthesize(config, { voiceId, text })
   const audioPath = await saveBinaryFile(audio, 'voice-audio', '.mp3')
   const prompt = talkingClipPrompt(row.name, text)
-  const clipRequest = talkingClipRequest(videoConfig.provider, image, audioPath, prompt)
+  // 画幅跟随项目设置（短剧默认竖屏），不再硬编码 16:9
+  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, row.dramaId))
+  const clipRequest = talkingClipRequest(videoConfig.provider, image, audioPath, prompt, drama?.aspectRatio ?? null)
   const taskId = await generateVideo({
     characterId: id,
     dramaId: row.dramaId,

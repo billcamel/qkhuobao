@@ -10,6 +10,14 @@
  */
 export const TALKING_CLIP_SECONDS = 5
 
+/** 试听片段跟随项目画幅：短剧基本是竖屏，兜底 9:16 而不是 16:9 */
+const DEFAULT_TALKING_CLIP_ASPECT = '9:16'
+
+function normalizeAspect(value: string | null | undefined): string {
+  const raw = String(value || '').trim()
+  return /^\d{1,2}:\d{1,2}$/.test(raw) ? raw : DEFAULT_TALKING_CLIP_ASPECT
+}
+
 export function talkingClipPrompt(name: string, line: string) {
   const who = name.trim() || '角色'
   return `${who}正面半身面对镜头自然说话，口型与参考音频一致，只说这一句：「${line}」。固定机位，不要切镜，不要字幕，不要其他人物。`
@@ -28,12 +36,18 @@ export interface TalkingClipRequest {
   purpose: 'voice_clip'
 }
 
-export function talkingClipRequest(provider: string, imageUrl: string, audioUrl: string, prompt: string): TalkingClipRequest {
+export function talkingClipRequest(
+  provider: string,
+  imageUrl: string,
+  audioUrl: string,
+  prompt: string,
+  aspectRatio?: string | null,
+): TalkingClipRequest {
   const base: TalkingClipRequest = {
     prompt,
     referenceAudioUrls: [audioUrl],
     duration: TALKING_CLIP_SECONDS,
-    aspectRatio: '16:9',
+    aspectRatio: normalizeAspect(aspectRatio),
     generateAudio: true,
     referenceMode: 'reference',
     purpose: 'voice_clip',
