@@ -117,5 +117,8 @@ export function previewTextFor(name: string, requested?: string | null): string 
   const custom = String(requested || '').trim()
   if (custom) return [...custom].slice(0, PREVIEW_TEXT_MAX).join('')
   const who = String(name || '').trim()
-  return who ? `大家好，我是${who}。` : '大家好，这是一段音色试听。'
+  // 文本太短会导致 TTS 只有 1 秒出头，下游 r2v 要求 ≥1.8s，默认句给足长度
+  return who
+    ? `大家好，我是${who}。这一段是用于确认音色的试听，麻烦听听这个声线是否适合这个角色。`
+    : '大家好，这是一段音色试听，用来确认声线是否合适。'
 }

@@ -95,3 +95,34 @@ export function voiceBindFromBody(body: any): { audioUrl: string; name: string |
   const name = String(body?.name ?? body?.voice_name ?? body?.voiceName ?? '').trim() || null
   return { audioUrl, name, source: body?.source === 'library' ? 'library' : 'upload' }
 }
+
+/**
+ * Seedance r2v 要求参考音频 ≥1.8 秒，短句 TTS 常只有 1.2~1.5 秒会被上游 400。
+ * 这里用 apad 补静音到 minSeconds（已够长的音频不受影响），原地替换文件。
+ */
+export async function ensureMinAudioDuration(relativePath: string, minSeconds = 2.5): Promise<void> {
+  if (!localAudioExists(relativePath)) return
+  const abs = getAbsolutePath(relativePath)
+  const { ffmpeg } = await import('../../utils/ffmpeg.js')
+  // 先探时长：已经够长就直接返回，避免每次重复转码掉音质
+  const current = await new Promise<number>((resolve) => {
+    ffmpeg.ffprobe(abs, (err, data) => {
+      const d = Number((data as any)?.format?.duration)
+      resolve(Number.isFinite(d) ? d : 0)
+    })
+  })
+  if (current >= minSeconds - 0.05) return
+  const tmp = `${abs}.pad.mp3`
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(abs)
+      .audioFilters(`apad=whole_dur=${minSeconds}`)
+      .on('end', () => resolve())
+      .on('error', (err: Error) => reject(err))
+      .save(tmp)
+  })
+  try {
+    fs.renameSync(tmp, abs)
+  } catch {
+    fs.rmSync(tmp, { force: true })
+  }
+}

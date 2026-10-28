@@ -100,6 +100,77 @@ const PORTRAIT_VOICE_ID: Record<string, Record<VoiceGender, string>> = {
   },
 }
 
+/** 角色气质/年龄段：决定从哪个音色池里挑，避免同性别角色全长一个声线 */
+export type VoicePersona = 'sweet' | 'bright' | 'cool' | 'mature' | 'elder'
+
+/** 从角色文本（描述/外形/造型/定位）里粗判气质 */
+export function inferPersona(text: string): VoicePersona {
+  const raw = String(text || '')
+  if (/老年|老人|奶奶|爷爷|老太|花甲|七旬|六旬|白发|长辈/.test(raw)) return 'elder'
+  if (/中年|四十|五十|母亲|父亲|爸爸|妈妈|老板娘|老板|主任|局长|领导|主妇/.test(raw)) return 'mature'
+  if (/御姐|高冷|清冷|冷艳|干练|职场|女强人|律师|合伙人|总裁|总监|严肃|凌厉/.test(raw)) return 'cool'
+  if (/甜美|可爱|软萌|元气|少女|爱笑|温暖|亲切|邻家|甜妹|稚气/.test(raw)) return 'sweet'
+  if (/少年|青年|大学生|清爽|阳光|干净|年轻|学生/.test(raw)) return 'bright'
+  return 'bright'
+}
+
+/**
+ * 每个性别 × 气质对应的候选音色（同一池里多个时按角色名稳定取一个，
+ * 这样同剧组的两个「少女」不会撞声线，但同一角色每次结果一致）。
+ * 音色清单与 seed-tts-2.0 资源实测可用的 uranus_bigtts 保持一致。
+ */
+const PERSONA_VOICE_POOL: Record<string, Partial<Record<VoiceGender, Partial<Record<VoicePersona, string[]>>>>> = {
+  volcengine: {
+    female: {
+      sweet: ['zh_female_tianmeixiaoyuan_uranus_bigtts', 'zh_female_vv_uranus_bigtts', 'zh_female_xiaohe_uranus_bigtts'],
+      bright: ['zh_female_vv_uranus_bigtts', 'zh_female_xiaohe_uranus_bigtts'],
+      cool: ['zh_female_shuangkuaisisi_uranus_bigtts', 'zh_female_xiaohe_uranus_bigtts'],
+      mature: ['zh_female_shuangkuaisisi_uranus_bigtts', 'zh_female_wenrouxiaoya_uranus_bigtts'],
+      elder: ['zh_female_wenrouxiaoya_uranus_bigtts'],
+    },
+    male: {
+      sweet: ['zh_male_shaonianzixin_uranus_bigtts'],
+      bright: ['zh_male_yangguangqingnian_uranus_bigtts', 'zh_male_shaonianzixin_uranus_bigtts'],
+      cool: ['zh_male_ruyayichen_uranus_bigtts', 'zh_male_shaonianzixin_uranus_bigtts'],
+      mature: ['zh_male_baqiqingshu_uranus_bigtts', 'zh_male_ruyayichen_uranus_bigtts'],
+      elder: ['zh_male_baqiqingshu_uranus_bigtts'],
+    },
+    child: {
+      sweet: ['zh_female_vv_uranus_bigtts'],
+      bright: ['zh_female_xiaohe_uranus_bigtts'],
+      cool: ['zh_female_xiaohe_uranus_bigtts'],
+      mature: ['zh_female_xiaohe_uranus_bigtts'],
+      elder: ['zh_female_wenrouxiaoya_uranus_bigtts'],
+    },
+  },
+}
+
+/** 稳定哈希：同一 seed 永远取同一个候选，不随进程重启或顺序变化 */
+function hashSeed(seed: string): number {
+  let h = 2166136261
+  for (let i = 0; i < seed.length; i += 1) {
+    h ^= seed.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return Math.abs(h)
+}
+
+/**
+ * 按形象照生成音色时挑一个音色：先看性别+气质池，池里按 seed 稳定取一个；
+ * 没有对应池就退回该性别的默认音色。
+ */
+export function pickPortraitVoice(provider: string, gender: VoiceGender, persona: VoicePersona, seed = ''): VoiceOption {
+  const key = provider.toLowerCase()
+  const pool = PERSONA_VOICE_POOL[key]?.[gender]?.[persona]
+  const list = catalogFor(key)
+  if (pool?.length) {
+    const id = pool[hashSeed(seed) % pool.length]
+    const hit = list.find(item => item.id === id)
+    if (hit) return hit
+  }
+  return defaultVoiceFor(provider, gender)
+}
+
 export function defaultVoiceFor(provider: string, gender: VoiceGender): VoiceOption {
   const list = catalogFor(provider)
   if (!list.length) throw new Error('不支持的语音服务商')

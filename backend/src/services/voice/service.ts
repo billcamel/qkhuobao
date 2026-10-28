@@ -7,7 +7,8 @@ import { talkingClipPrompt, talkingClipRequest } from './talking-clip.js'
 import { now } from '../../utils/response.js'
 import { getVoiceAdapter } from './adapters.js'
 import { clearedVoiceColumns, parseVoiceMeta, presentCharacter, previewTextFor, voiceColumnValues } from './binding.js'
-import { defaultVoiceFor, inferCharacterGender } from './catalog.js'
+import { defaultVoiceFor, inferCharacterGender, inferPersona, pickPortraitVoice } from './catalog.js'
+import { ensureMinAudioDuration } from './local-audio.js'
 import { dubbingCastForEpisode } from './dubbing-cast.js'
 import {
   audioDisplayName,
@@ -225,14 +226,21 @@ export async function generateCharacterVoiceFromPortrait(id: number, body: any =
   if (!config) throw new Error('未配置语音合成，请到设置页添加并启用')
   if (!config.apiKey) throw new Error('语音合成配置缺少 API Key')
 
-  const gender = inferCharacterGender(characterGenderText(row))
-  const fallback = defaultVoiceFor(config.provider, gender)
+  const genderText = characterGenderText(row)
+  const gender = inferCharacterGender(genderText)
+  // 气质/年龄段决定音色池，避免同剧同性别角色撞声线
+  const persona = inferPersona([
+    row.name, row.role, row.description, row.appearance, row.styling,
+  ].filter(Boolean).join(' '))
+  const fallback = pickPortraitVoice(config.provider, gender, persona, `${row.id}:${row.name || ''}`)
   const storedVoiceId = previous.synth_provider === config.provider && typeof previous.synth_voice_id === 'string'
     ? previous.synth_voice_id.trim()
     : ''
   const text = previewTextFor(row.name, body?.text)
   const synthesized = await synthesizeReference(config, storedVoiceId || fallback.id, fallback.id, text)
   const audioPath = await saveBinaryFile(synthesized.audio, 'voice-audio', '.mp3')
+  // 上游 r2v 要求参考音频 ≥1.8s，短句先补静音，避免说话片段报 400
+  await ensureMinAudioDuration(audioPath)
   const voiceName = audioDisplayName(audioPath, row.name ? `${row.name}的参考音色` : '形象照参考音色')
   await db.update(schema.characters).set({
     ...voiceColumnValues({
@@ -246,6 +254,7 @@ export async function generateCharacterVoiceFromPortrait(id: number, body: any =
         config_id: config.id ?? null,
         model: config.model || null,
         gender,
+        persona,
         sample_text: text,
         synth_provider: config.provider,
         synth_voice_id: synthesized.voiceId,
