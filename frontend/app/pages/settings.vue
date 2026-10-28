@@ -517,10 +517,14 @@
             <input v-model.number="cfgForm.priority" class="input" type="number" min="0" max="999" />
             <span class="field-hint">{{ t('settings.cfg.priorityHint') }}</span>
           </label>
-          <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" placeholder="sk-..." /></label>
+          <label class="field">
+            <span class="field-label">{{ isVolcengineTts ? t('settings.cfg.volcengineApiKey') : 'API Key' }}</span>
+            <input v-model="cfgForm.api_key" class="input" type="password" :placeholder="isVolcengineTts ? t('settings.cfg.volcengineApiKeyPlaceholder') : 'sk-...'" />
+            <span v-if="isVolcengineTts" class="field-hint">{{ t('settings.cfg.volcengineApiKeyHint') }}</span>
+          </label>
           <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
           <div class="field">
-            <span class="field-label">{{ t('settings.cfg.models') }}</span>
+            <span class="field-label">{{ isVolcengineTts ? t('settings.cfg.volcengineResourceId') : t('settings.cfg.models') }}</span>
             <div v-if="cfgForm.models.length" class="model-chips">
               <span
                 v-for="(m, i) in cfgForm.models" :key="`${m}-${i}`"
@@ -541,13 +545,8 @@
               <button type="button" class="btn btn-sm" :disabled="!modelInput.trim()" @click="addModel">{{ t('common.add') }}</button>
             </div>
             <span class="field-hint">{{ t('settings.cfg.modelsHint') }}</span>
+            <span v-if="isVolcengineTts" class="field-hint">{{ t('settings.cfg.volcengineResourceHint') }}</span>
           </div>
-          <label v-if="cfgForm.service_type === 'tts' && cfgForm.provider === 'volcengine'" class="field">
-            <span class="field-label">{{ t('settings.cfg.appId') }}</span>
-            <input v-model="cfgForm.app_id" class="input" placeholder="App ID" />
-            <span class="field-hint">{{ t('settings.cfg.appIdHint') }}</span>
-            <span class="field-hint">{{ t('settings.cfg.volcengineClusterHint') }}</span>
-          </label>
           <label v-if="cfgForm.service_type === 'text'" class="field">
             <span class="field-label">Temperature <span class="dim">({{ t('settings.cfg.tempHint') }})</span></span>
             <input v-model="cfgForm.temperature" class="input" type="number" step="0.1" min="0" max="2" :placeholder="t('settings.cfg.tempPlaceholder')" />
@@ -727,7 +726,8 @@ const huobaoSaving = ref(false)
 // 火宝节点选择：默认跟随界面语言（中文→国内 .cn，其他→国外 .com），一键配置与取 Key 链接共用
 const huobaoRegion = ref(locale.value?.startsWith('zh') ? 'cn' : 'com')
 const huobaoSiteUrl = computed(() => `https://api.firemux.${huobaoRegion.value}`)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', models: [], service_type: 'text', priority: 0, temperature: '', app_id: '' })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', models: [], service_type: 'text', priority: 0, temperature: '' })
+const isVolcengineTts = computed(() => cfgForm.service_type === 'tts' && cfgForm.provider === 'volcengine')
 // 模型标签编辑器：首位即默认模型；输入框支持回车添加、逗号/换行批量粘贴
 const modelInput = ref('')
 function addModel() {
@@ -780,7 +780,7 @@ const providerPresets = {
   },
   tts: {
     minimax: { label: 'MiniMax 语音', baseUrl: 'https://api.minimaxi.com', models: ['speech-02-hd', 'speech-02-turbo'] },
-    volcengine: { label: '豆包语音', baseUrl: 'https://openspeech.bytedance.com', models: ['volcano_tts'] },
+    volcengine: { label: '豆包语音', baseUrl: 'https://openspeech.bytedance.com', models: ['seed-tts-1.0', 'seed-tts-2.0', 'seed-icl-1.0', 'seed-icl-2.0'] },
     openai: { label: 'OpenAI 语音', baseUrl: 'https://api.openai.com', models: ['tts-1', 'gpt-4o-mini-tts'] },
   },
 }
@@ -873,7 +873,7 @@ async function applyHuobaoQuickConfig() {
 function startAddCfg(t) {
   cfgEditId.value = null
   cfgTestResult.value = null
-  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', models: [], service_type: t, priority: 0, temperature: '', app_id: '' })
+  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', models: [], service_type: t, priority: 0, temperature: '' })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
   cfgDialog.value = true
@@ -890,7 +890,6 @@ function startEditCfg(c) {
     service_type: c.service_type,
     priority: c.priority ?? 0,
     temperature: c.temperature ?? '',
-    app_id: c.app_id || '',
   })
   cfgDialog.value = true
 }
@@ -934,7 +933,8 @@ async function saveCfg() {
   }
   try {
     const payload = { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, temperature }
-    if (cfgForm.service_type === 'tts') payload.app_id = cfgForm.provider === 'volcengine' ? (cfgForm.app_id.trim() || null) : null
+    // 豆包语音已改用 X-Api-Key，保存时清掉历史 App ID
+    if (cfgForm.service_type === 'tts') payload.app_id = null
     if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, payload)
     else await aiConfigAPI.create({ ...payload, service_type: cfgForm.service_type, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}` })
     cfgDialog.value = false; toast.success(t('common.saved')); loadCfgs()

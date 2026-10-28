@@ -413,9 +413,11 @@
       "unreachable": "Endpoint failed the test",
       "providerRequired": "Select a provider",
       "tempInvalid": "Temperature must be a number between 0 and 2",
-      "appId": "App ID",
-      "appIdHint": "Volcengine speech App ID. Put the access token in API Key — they are not the same value.",
-      "volcengineClusterHint": "For Doubao speech the model name is the cluster. Large-model voices usually use volcano_tts."
+      "volcengineApiKey": "API Key (X-Api-Key)",
+      "volcengineApiKeyPlaceholder": "Console API Key",
+      "volcengineApiKeyHint": "Paste the key from Volcengine console API Key management. It is sent as X-Api-Key. App ID and access tokens are no longer required.",
+      "volcengineResourceId": "Resource ID (X-Api-Resource-Id)",
+      "volcengineResourceHint": "The model name is the X-Api-Resource-Id header and also selects the billing product. Built-in moon voices use seed-tts-1.0; 2.0 voices use seed-tts-2.0; voice clone uses seed-icl-1.0 or seed-icl-2.0. A saved volcano_tts value is called as seed-tts-1.0."
     },
     "styleDialog": {
       "editTitle": "Edit Style Preset",

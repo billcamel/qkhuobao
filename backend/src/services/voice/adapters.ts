@@ -141,59 +141,114 @@ export const minimaxVoiceAdapter: VoiceProviderAdapter = {
   },
 }
 
+/** 内置 moon_bigtts 音色属于语音合成 1.0。空模型与旧版 cluster 名都落到这个资源。 */
+export const VOLCENGINE_DEFAULT_RESOURCE_ID = 'seed-tts-1.0'
+
+const VOLCENGINE_LEGACY_RESOURCE_IDS: Record<string, string> = {
+  volcano_tts: 'seed-tts-1.0',
+  volcano_mega: 'seed-tts-1.0',
+  volcano_icl: 'seed-icl-1.0',
+}
+
 /**
- * 豆包语音 HTTP 合成。鉴权头是 `Bearer;token`（分号，不是空格）。
- * API Key 填 Access Token；App ID 放在配置 settings.app_id；模型名即 cluster。
+ * 配置里的模型名即 `X-Api-Resource-Id`（也决定计费商品）。
+ * 已保存的旧 cluster（volcano_tts 等）映射到对应的 1.0 资源，其余原样透传。
+ */
+export function volcengineResourceId(model: string | null | undefined): string {
+  const raw = String(model || '').trim()
+  if (!raw) return VOLCENGINE_DEFAULT_RESOURCE_ID
+  return VOLCENGINE_LEGACY_RESOURCE_IDS[raw] || raw
+}
+
+/**
+ * 豆包语音 V3 HTTP Chunked 单向流。
+ * 新版控制台只认 `X-Api-Key`，不再传 App ID / Access Token。
  * 这是语音产品，不能复用方舟 Seedance/Seedream 的 key。
  */
 export function buildVolcengineSpeechRequest(config: VoiceConfig, input: { voiceId: string; text: string }): SpeechRequest {
-  const token = config.apiKey
-  const appId = config.appId || ''
   return {
-    url: joinProviderUrl(config.baseUrl, '/api/v1', '/tts'),
+    url: joinProviderUrl(config.baseUrl, '/api/v3/tts', '/unidirectional'),
     method: 'POST',
     headers: {
-      Authorization: `Bearer;${token}`,
+      'X-Api-Key': config.apiKey,
+      'X-Api-Resource-Id': volcengineResourceId(config.model),
+      'X-Api-Request-Id': randomUUID(),
       'Content-Type': 'application/json',
     },
     body: {
-      app: { appid: appId, token, cluster: config.model || 'volcano_tts' },
       user: { uid: 'huobao-drama' },
-      audio: {
-        voice_type: input.voiceId,
-        encoding: 'mp3',
-        speed_ratio: 1,
-        volume_ratio: 1,
-        pitch_ratio: 1,
-      },
-      request: {
-        reqid: randomUUID(),
+      req_params: {
         text: input.text,
-        text_type: 'plain',
-        operation: 'query',
+        speaker: input.voiceId,
+        audio_params: { format: 'mp3', sample_rate: 24000 },
       },
     },
   }
 }
 
-export function parseVolcengineAudio(json: any): Buffer {
-  const code = Number(json?.code)
-  if (code !== 3000) throw new Error(String(json?.message || '豆包语音合成失败'))
-  if (typeof json?.data !== 'string' || !json.data) throw new Error('豆包语音没有返回音频')
-  const bytes = decodeAudioPayload(json.data)
-  if (!bytes.length) throw new Error('豆包语音没有返回音频')
-  return bytes
+function volcengineEventPayload(line: string): string {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith(':') || trimmed.startsWith('event:')) return ''
+  if (trimmed.startsWith('data:')) return trimmed.slice(5).trim()
+  return trimmed
+}
+
+/** 把 V3 单向流（NDJSON，或带 data: 前缀的 SSE）里的音频块按序拼成一段 mp3。 */
+export function parseVolcengineAudio(raw: string): Buffer {
+  const chunks: Buffer[] = []
+  let errorMessage = ''
+  let sawEvent = false
+  const take = (json: any) => {
+    if (!json || typeof json !== 'object') return
+    sawEvent = true
+    const code = Number(json.code)
+    if (code === 0) {
+      // V3 的 data 是 base64 音频块。不要走 hex 优先的 decodeAudioPayload，短块可能被误判成 hex。
+      if (typeof json.data === 'string' && json.data.trim()) {
+        const bytes = Buffer.from(json.data, 'base64')
+        if (bytes.length) chunks.push(bytes)
+      }
+      return
+    }
+    if (code === 20000000) return
+    if (Number.isFinite(code)) {
+      errorMessage = String(json.message || `豆包语音合成失败（${code}）`)
+    }
+  }
+
+  for (const line of String(raw || '').split(/\r?\n/)) {
+    const payload = volcengineEventPayload(line)
+    if (!payload || payload === '[DONE]') continue
+    try { take(JSON.parse(payload)) } catch { /* 跳过 event: 之类的非 JSON 行 */ }
+  }
+  if (!sawEvent) {
+    const trimmed = String(raw || '').trim()
+    if (trimmed) {
+      try { take(JSON.parse(trimmed)) } catch { /* 整段也不是 JSON */ }
+    }
+  }
+  if (errorMessage) throw new Error(errorMessage)
+  if (!chunks.length) throw new Error('豆包语音没有返回音频')
+  return Buffer.concat(chunks)
 }
 
 export const volcengineVoiceAdapter: VoiceProviderAdapter = {
   provider: 'volcengine',
   catalog: VOLCENGINE_VOICES,
   async synthesize(config, input) {
-    if (!config.appId) throw new Error('请在设置中填写火山语音 App ID')
+    if (!config.apiKey) throw new Error('语音合成配置缺少 API Key')
     const resp = await postJson(buildVolcengineSpeechRequest(config, input))
-    const json = await resp.json().catch(() => null)
-    if (!resp.ok && !json?.code) throw new Error(providerMessage(JSON.stringify(json || {}), resp.status))
-    return parseVolcengineAudio(json)
+    const text = await resp.text()
+    if (!text.trim()) throw new Error(providerMessage('', resp.status))
+    try {
+      return parseVolcengineAudio(text)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : ''
+      if (!resp.ok && (!message || message === '豆包语音没有返回音频')) {
+        throw new Error(providerMessage(text, resp.status))
+      }
+      throw err
+    }
   },
 }
 

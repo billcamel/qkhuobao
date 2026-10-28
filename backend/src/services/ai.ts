@@ -46,7 +46,7 @@ export function parseConfigTemperature(settingsRaw: string | null | undefined): 
   }
 }
 
-/** 火山引擎语音合成的 App ID，与 API Key（Access Token）分开存放 */
+/** 历史 settings.app_id。豆包语音 V3 已改用 X-Api-Key，合成不再读取该字段。 */
 export function parseConfigAppId(settingsRaw: string | null | undefined): string | null {
   if (!settingsRaw) return null
   try {

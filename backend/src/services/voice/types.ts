@@ -37,7 +37,6 @@ export interface CharacterVoice {
 
 export interface VoiceConfig extends AIConfig {
   name: string
-  appId: string | null
 }
 
 export interface SpeechRequest {

@@ -42,7 +42,7 @@ export const MINIMAX_VOICES: VoiceOption[] = [
   voice('lovely_girl', '萌萌女童', 'child', 'zh', 'MiniMax 系统音色'),
 ]
 
-/** 豆包语音合成大模型常用 voice_type。cluster 用配置里的模型名，默认 volcano_tts。 */
+/** 豆包语音合成 1.0（moon_bigtts）常用 voice_type。资源 ID 用 seed-tts-1.0，由模型名映射到 X-Api-Resource-Id。 */
 export const VOLCENGINE_VOICES: VoiceOption[] = [
   voice('zh_female_shuangkuaisisi_moon_bigtts', '爽快思思', 'female', 'zh', '豆包语音 moon'),
   voice('zh_male_wennuanahu_moon_bigtts', '温暖阿虎', 'male', 'zh', '豆包语音 moon'),
