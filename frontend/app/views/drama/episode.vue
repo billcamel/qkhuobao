@@ -876,6 +876,18 @@
                       <span class="tag mono">{{ videoPreview ? videoPreview.references.length : boundRefAssets.length }}</span>
                     </div>
                     <!-- 与实际请求一致：顺序即 @图片N 编号，故事板段第 1 张为净版关键帧 -->
+                    <div v-if="videoPreview && videoPreview.reference_videos?.length" class="video-bound-refs">
+                      <div
+                        v-for="clip in videoPreview.reference_videos"
+                        :key="'voice-' + clip.index"
+                        class="video-bound-ref"
+                        :title="`@视频${clip.index} · ${clip.name}`"
+                      >
+                        <video :src="assetImageSrc({ imageUrl: clip.url })" muted playsinline preload="metadata" />
+                        <span class="video-ref-index mono">@视频{{ clip.index }}</span>
+                        <small>{{ clip.name }}</small>
+                      </div>
+                    </div>
                     <div v-if="videoPreview && videoPreview.references.length" class="video-bound-refs">
                       <button
                         v-for="ref in videoPreview.references"

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initSqliteSchema } from '../src/db/sqlite-schema.ts'
 import { presentCharacter, previewTextFor, readCharacterVoice } from '../src/services/voice/binding.ts'
+import { appendVoiceClipNote, collectVoiceClips, voiceClipLimit } from '../src/services/video-request.ts'
+import { speakingClipFilter } from '../src/services/voice/speaking-clip.ts'
 import {
   buildMinimaxSpeechRequest,
   buildOpenAiSpeechRequest,
@@ -37,14 +39,14 @@ test('character voice round-trips metadata and is attached for later dubbing', (
     voiceProvider: 'minimax',
     voiceId: 'female-shaonv',
     voiceName: '少女',
-    voicePreviewUrl: 'static/voice-previews/demo.mp3',
+    voiceClipUrl: 'static/voice-clips/demo.mp4',
     voiceMeta: JSON.stringify({ config_id: 4, model: 'speech-02-hd', gender: 'female', language: 'zh', sample_text: '大家好' }),
   }
   const voice = readCharacterVoice(row)
   assert.equal(voice?.provider, 'minimax')
   assert.equal(voice?.voice_id, 'female-shaonv')
   assert.equal(voice?.name, '少女')
-  assert.equal(voice?.preview_url, 'static/voice-previews/demo.mp3')
+  assert.equal(voice?.clip_url, 'static/voice-clips/demo.mp4')
   assert.equal(voice?.config_id, 4)
   assert.equal(voice?.model, 'speech-02-hd')
   assert.equal(voice?.meta.gender, 'female')
@@ -104,6 +106,25 @@ test('built-in voice catalogs keep unique ids', () => {
   assert.ok(VOLCENGINE_VOICES.some(voice => voice.id === 'zh_female_shuangkuaisisi_moon_bigtts'))
 })
 
+test('speaking clips are attached as reference videos, not audio', () => {
+  assert.equal(voiceClipLimit('volcengine'), 3)
+  assert.equal(voiceClipLimit('minimax'), 3)
+  assert.equal(voiceClipLimit('aliyun'), 5)
+  const clips = collectVoiceClips([
+    { id: 1, name: '林小雨', voiceClipUrl: 'static/voice-clips/a.mp4' },
+    { id: 2, name: '旁白', voiceClipUrl: '' },
+    { id: 3, name: '阿宁', voiceClipUrl: 'static/voice-clips/b.mp4' },
+    { id: 4, name: '多出来', voiceClipUrl: 'static/voice-clips/c.mp4' },
+    { id: 5, name: '再多', voiceClipUrl: 'static/voice-clips/d.mp4' },
+  ], 3)
+  assert.deepEqual(clips.map(clip => clip.name), ['林小雨', '阿宁', '多出来'])
+  assert.equal(clips[0].index, 1)
+  const prompt = appendVoiceClipNote('开场', clips.slice(0, 1))
+  assert.match(prompt, /@视频1 是林小雨的说话样本/)
+  assert.equal(appendVoiceClipNote('开场', []), '开场')
+  assert.equal(speakingClipFilter(), 'scale=trunc(iw/2)*2:trunc(ih/2)*2')
+})
+
 test('existing character tables gain voice columns on startup', () => {
   const sqlite = new Database(':memory:')
   sqlite.exec(`CREATE TABLE characters (
@@ -115,7 +136,7 @@ test('existing character tables gain voice columns on startup', () => {
   )`)
   initSqliteSchema(sqlite)
   const names = (sqlite.prepare('PRAGMA table_info(characters)').all() as { name: string }[]).map(col => col.name)
-  for (const column of ['voice_provider', 'voice_id', 'voice_name', 'voice_preview_url', 'voice_meta']) {
+  for (const column of ['voice_provider', 'voice_id', 'voice_name', 'voice_preview_url', 'voice_clip_url', 'voice_meta']) {
     assert.ok(names.includes(column), column)
   }
   sqlite.close()

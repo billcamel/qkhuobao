@@ -66,6 +66,7 @@ export const sqliteSchemaStatements = [
     voice_id TEXT,
     voice_name TEXT,
     voice_preview_url TEXT,
+    voice_clip_url TEXT,
     voice_meta TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -505,6 +506,7 @@ export function initSqliteSchema(sqlite: Database.Database) {
     voice_id: 'TEXT',
     voice_name: 'TEXT',
     voice_preview_url: 'TEXT',
+    voice_clip_url: 'TEXT',
     voice_meta: 'TEXT',
   })
   // 已出现过故事板参考被真人审核拒绝（自动重提）的项目：补记当前风格，后续含人物的段直接跳过关键帧

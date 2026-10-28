@@ -5,16 +5,24 @@
       {{ voice ? voice.name : t('episode.asset.voice.unset') }}
     </span>
     <button
-      v-if="voice"
+      v-if="clipUrl"
       type="button"
       class="btn btn-sm btn-ghost char-voice-icon"
-      :title="playingKey === 'bound' ? t('episode.asset.voice.stop') : t('episode.asset.voice.preview')"
-      :disabled="previewingKey === 'bound'"
-      @click="previewBound"
+      :title="t('episode.asset.voice.play')"
+      @click="playerOpen = true"
     >
-      <Loader2 v-if="previewingKey === 'bound'" :size="12" class="animate-spin" />
-      <Square v-else-if="playingKey === 'bound'" :size="12" />
-      <Play v-else :size="12" />
+      <Play :size="12" />
+    </button>
+    <button
+      v-if="voice"
+      type="button"
+      class="btn btn-sm"
+      :title="hasImage ? '' : t('episode.asset.voice.needImage')"
+      :disabled="!hasImage || generatingKey === 'bound'"
+      @click="generateClip()"
+    >
+      <Loader2 v-if="generatingKey === 'bound'" :size="11" class="animate-spin" />
+      {{ clipUrl ? t('episode.asset.voice.regenClip') : t('episode.asset.voice.generateClip') }}
     </button>
     <button type="button" class="btn btn-sm" @click="openPicker">
       {{ voice ? t('episode.asset.voice.change') : t('episode.asset.voice.pick') }}
@@ -67,9 +75,9 @@
                       <span class="dim char-voice-id">{{ item.voice_id }}</span>
                     </div>
                     <div class="char-voice-option-actions">
-                      <button type="button" class="btn btn-sm" :disabled="previewingKey === previewKey(group, item)" @click="previewVoice(group, item)">
-                        <Loader2 v-if="previewingKey === previewKey(group, item)" :size="11" class="animate-spin" />
-                        {{ playingKey === previewKey(group, item) ? t('episode.asset.voice.stop') : t('episode.asset.voice.preview') }}
+                      <button type="button" class="btn btn-sm" :disabled="!hasImage || generatingKey === previewKey(group, item)" :title="hasImage ? '' : t('episode.asset.voice.needImage')" @click="generateClip(group, item)">
+                        <Loader2 v-if="generatingKey === previewKey(group, item)" :size="11" class="animate-spin" />
+                        {{ t('episode.asset.voice.generateClip') }}
                       </button>
                       <button type="button" class="btn btn-sm btn-primary" :disabled="applyingKey === previewKey(group, item) || isCurrent(group, item)" @click="applyVoice(group, item)">
                         <Loader2 v-if="applyingKey === previewKey(group, item)" :size="11" class="animate-spin" />
@@ -99,12 +107,23 @@
         </form>
       </div>
     </Teleport>
+    <Teleport to="body">
+      <div v-if="playerOpen" class="overlay" @click.self="playerOpen = false">
+        <div class="dialog char-voice-player" role="dialog" aria-modal="true">
+          <div class="dialog-head">
+            <div class="dialog-title">{{ voice?.name || t('episode.asset.voice.play') }}</div>
+            <button type="button" class="btn btn-ghost btn-icon" @click="playerOpen = false"><X :size="14" /></button>
+          </div>
+          <video v-if="clipUrl" class="char-voice-video" :src="mediaUrl(clipUrl)" controls autoplay playsinline />
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Loader2, Play, Square, X } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { Loader2, Play, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import { characterVoiceAPI } from '~/composables/useApi'
@@ -121,15 +140,13 @@ const loading = ref(false)
 const configured = ref(false)
 const providers = ref([])
 const query = ref('')
-const previewingKey = ref('')
+const generatingKey = ref('')
 const applyingKey = ref('')
 const clearing = ref(false)
-const playingKey = ref('')
+const playerOpen = ref(false)
 const customConfigId = ref(null)
 const customId = ref('')
 const customName = ref('')
-let player = null
-
 const voice = computed(() => {
   const c = props.character
   if (!c) return null
@@ -141,10 +158,13 @@ const voice = computed(() => {
     provider,
     voice_id: id,
     name: c.voice_name || c.voiceName || id,
-    preview_url: c.voice_preview_url || c.voicePreviewUrl || null,
+    clip_url: c.voice_clip_url || c.voiceClipUrl || null,
     config_id: null,
   }
 })
+
+const clipUrl = computed(() => voice.value?.clip_url || props.character?.voice_clip_url || props.character?.voiceClipUrl || '')
+const hasImage = computed(() => !!(props.character?.image_url || props.character?.imageUrl || props.character?.local_path || props.character?.localPath))
 
 const filteredGroups = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -169,33 +189,6 @@ function previewKey(group, item) {
 
 function isCurrent(group, item) {
   return voice.value?.provider === item.provider && voice.value?.voice_id === item.voice_id && (voice.value?.config_id == null || voice.value.config_id === group.config_id)
-}
-
-function stopPlayback() {
-  if (player) {
-    player.pause()
-    player.src = ''
-    player = null
-  }
-  playingKey.value = ''
-}
-
-function playUrl(url, key) {
-  if (playingKey.value === key) {
-    stopPlayback()
-    return
-  }
-  stopPlayback()
-  const src = mediaUrl(url)
-  if (!src) return
-  player = new Audio(src)
-  playingKey.value = key
-  player.onended = () => { playingKey.value = '' }
-  player.onerror = () => {
-    playingKey.value = ''
-    toast.error(t('episode.asset.voice.previewFailed'))
-  }
-  player.play().catch(() => { playingKey.value = '' })
 }
 
 async function loadVoices() {
@@ -254,55 +247,33 @@ async function applyCustom() {
   }, 'custom')
 }
 
-async function previewVoice(group, item) {
-  const key = previewKey(group, item)
-  if (playingKey.value === key) {
-    stopPlayback()
-    return
-  }
+async function generateClip(group, item) {
   if (!props.character?.id) return
-  previewingKey.value = key
-  try {
-    const res = await characterVoiceAPI.preview(props.character.id, {
-      provider: item.provider || group.provider,
-      voice_id: item.voice_id,
-      config_id: group.config_id,
-    })
-    if (res?.saved && res.character) emit('updated', res.character)
-    if (res?.preview_url) playUrl(res.preview_url, key)
-  } catch (err) {
-    toastError(err, { fallback: 'episode.asset.voice.previewFailed' })
-  } finally {
-    previewingKey.value = ''
-  }
-}
-
-async function previewBound() {
-  if (!voice.value) return
-  if (playingKey.value === 'bound') {
-    stopPlayback()
+  if (!hasImage.value) {
+    toast.warning(t('episode.asset.voice.needImage'))
     return
   }
-  if (voice.value.preview_url) {
-    playUrl(voice.value.preview_url, 'bound')
-    return
-  }
-  previewingKey.value = 'bound'
+  const key = group && item ? previewKey(group, item) : 'bound'
+  generatingKey.value = key
   try {
-    const res = await characterVoiceAPI.preview(props.character.id, {})
+    const payload = group && item
+      ? { provider: item.provider || group.provider, voice_id: item.voice_id, voice_name: item.name, config_id: group.config_id }
+      : {}
+    const res = await characterVoiceAPI.preview(props.character.id, payload)
     if (res?.character) emit('updated', res.character)
-    if (res?.preview_url) playUrl(res.preview_url, 'bound')
+    playerOpen.value = true
+    toast.success(t('episode.asset.voice.clipReady'))
   } catch (err) {
     toastError(err, { fallback: 'episode.asset.voice.previewFailed' })
   } finally {
-    previewingKey.value = ''
+    generatingKey.value = ''
   }
 }
 
 async function clearVoice() {
   if (!props.character?.id) return
   clearing.value = true
-  stopPlayback()
+  playerOpen.value = false
   try {
     const updated = await characterVoiceAPI.clear(props.character.id)
     emit('updated', updated)
@@ -314,8 +285,6 @@ async function clearVoice() {
   }
 }
 
-watch(() => props.character?.id, () => stopPlayback())
-onBeforeUnmount(stopPlayback)
 </script>
 
 <style scoped>
@@ -370,6 +339,8 @@ onBeforeUnmount(stopPlayback)
 .char-voice-custom { display: flex; flex-direction: column; gap: 6px; }
 .char-voice-custom-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr auto; gap: 6px; }
 .char-voice-nomatch { font-size: 12px; padding: 4px 0 8px; }
+.char-voice-player { width: min(420px, calc(100vw - 32px)); }
+.char-voice-video { width: 100%; max-height: 70vh; background: #000; display: block; }
 .dialog-sub { margin-top: 2px; color: var(--text-3); font-size: 12px; }
 @media (max-width: 640px) {
   .char-voice-custom-row { grid-template-columns: 1fr; }

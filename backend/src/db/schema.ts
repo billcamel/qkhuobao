@@ -67,6 +67,8 @@ export const characters = sqliteTable('characters', {
   voiceId: text('voice_id'),
   voiceName: text('voice_name'),
   voicePreviewUrl: text('voice_preview_url'),
+  // 说话短视频：定妆图 + 所选音色。后续镜头把它当作 reference_video 传入，而不是单独的音频
+  voiceClipUrl: text('voice_clip_url'),
   voiceMeta: text('voice_meta'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),

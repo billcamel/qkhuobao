@@ -12,14 +12,15 @@ export interface VoiceOption {
 }
 
 /**
- * 角色上持久化的音色。后期配音只读这个对象，不必再拆列。
- * preview_url 为已生成的短试听（static/ 相对路径或绝对 URL），没有则为 null。
+ * 角色上持久化的音色。clip_url 是定妆图加这段声音合成的说话短视频，
+ * 资产页播放它，镜头生成时作为 reference_video 传入（视频模型用视频携带参考声音）。
  */
 export interface CharacterVoice {
   provider: string
   voice_id: string
   name: string
-  preview_url: string | null
+  /** 说话短视频。没有生成过则为 null */
+  clip_url: string | null
   config_id: number | null
   model: string | null
   meta: {

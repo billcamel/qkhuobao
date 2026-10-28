@@ -55,9 +55,45 @@ export function boardReferenceNote(guide: string) {
   return `@图片1 是本段各镜头的关键画面（多格按镜头顺序从左到右排列：${guide}），只用于参考每个镜头的构图、景别、人物站位与场景布置；视频是正常的单画面，不要出现多格拼接、分屏或任何文字。`
 }
 
+export interface VoiceClipRef {
+  index: number
+  characterId: number
+  name: string
+  url: string
+}
+
+/** 参考视频条数：Seedance / MiniMax ≤3，Wan 3.0 ≤5。声音只走 reference_video，不走 reference_audio。 */
+export function voiceClipLimit(provider?: string | null) {
+  return (provider || '').toLowerCase() === 'aliyun' ? 5 : 3
+}
+
+export function collectVoiceClips(characters: { id: number; name?: string | null; voiceClipUrl?: string | null }[], limit: number): VoiceClipRef[] {
+  const clips: VoiceClipRef[] = []
+  for (const character of characters) {
+    const url = String(character.voiceClipUrl || '').trim()
+    if (!url || clips.length >= limit) continue
+    clips.push({ index: clips.length + 1, characterId: character.id, name: (character.name || '').trim(), url })
+  }
+  return clips
+}
+
+/** 告诉视频模型：这些参考视频只提供角色声音，不要把试听画面剪进成片 */
+export function voiceClipPromptNote(clips: { index: number; name: string }[]) {
+  if (!clips.length) return ''
+  return clips.map(clip => `@视频${clip.index} 是${clip.name || '角色'}的说话样本，只借用这个声音；成片不要出现这段试听画面。`).join('\n')
+}
+
+export function appendVoiceClipNote(prompt: string, clips: { index: number; name: string }[]) {
+  const note = voiceClipPromptNote(clips)
+  if (!note) return prompt
+  return prompt ? `${prompt}\n${note}` : note
+}
+
 export interface StoryboardVideoInput {
   prompt: string
   references: (ReferenceAsset & { index: number })[]
+  /** 出场角色已有说话短视频时，按绑定顺序放入 reference_video（不是 reference_audio） */
+  voiceClips: VoiceClipRef[]
   boardState: BoardReferenceState
   /** 有故事板时为故事板时长，否则 undefined（沿用请求值） */
   duration?: number
@@ -86,9 +122,12 @@ export async function buildStoryboardVideoInput(storyboardId: number, opts: { pr
 
   const raw = String(opts.rawPrompt || '').trim() || sb.videoPrompt || ''
   const resolved = resolvePromptRefs(raw, refs)
+  const prompt = useBoard ? `${boardReferenceNote(boardPanelGuide(board!))}\n${resolved}` : resolved
+  const voiceClips = collectVoiceClips(bindings.characters, voiceClipLimit(opts.provider))
   return {
-    prompt: useBoard ? `${boardReferenceNote(boardPanelGuide(board!))}\n${resolved}` : resolved,
+    prompt: appendVoiceClipNote(prompt, voiceClips),
     references: refs.map((r, i) => ({ ...r, index: i + 1 })),
+    voiceClips,
     boardState,
     duration: board ? board.shots[board.shots.length - 1]?.end : undefined,
   }
@@ -117,5 +156,12 @@ export async function previewStoryboardVideoRequest(storyboardId: number, config
     board_state: input.boardState,
     prompt: await applyVideoStylePrefix(input.prompt, ep?.dramaId),
     references: input.references.map(r => ({ index: r.index, kind: r.id === 0 ? 'board' : r.kind, name: r.name, url: r.imageUrl })),
+    reference_videos: input.voiceClips.map(clip => ({
+      index: clip.index,
+      name: clip.name,
+      url: clip.url,
+      character_id: clip.characterId,
+      role: 'reference_video',
+    })),
   }
 }

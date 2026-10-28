@@ -98,7 +98,7 @@ app.delete('/:id/voice', async (c) => {
   }
 })
 
-// POST /characters/:id/voice/preview — 合成短试听。传入尚未保存的 voice_id 只返回音频，不改绑定
+// POST /characters/:id/voice/preview — 用定妆图和已选音色合成说话短视频。换音色时先改绑定再重做视频
 app.post('/:id/voice/preview', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json().catch(() => ({}))

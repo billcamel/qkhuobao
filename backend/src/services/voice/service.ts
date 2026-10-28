@@ -1,7 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../../db/index.js'
 import { isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../ai.js'
-import { saveBinaryFile } from '../../utils/storage.js'
+import fs from 'node:fs'
+import { getAbsolutePath, saveBinaryFile } from '../../utils/storage.js'
+import { renderSpeakingClip } from './speaking-clip.js'
 import { now } from '../../utils/response.js'
 import { getVoiceAdapter } from './adapters.js'
 import { clearedVoiceColumns, presentCharacter, previewTextFor, readCharacterVoice, voiceColumnValues } from './binding.js'
@@ -9,8 +11,6 @@ import { dubbingCastForEpisode } from './dubbing-cast.js'
 import type { VoiceConfig, VoiceOption } from './types.js'
 
 export { dubbingCastForEpisode, presentCharacter, readCharacterVoice }
-
-const PREVIEW_DIR = 'voice-previews'
 
 function rowToVoiceConfig(row: typeof schema.aiServiceConfigs.$inferSelect): VoiceConfig {
   const models = row.model ? JSON.parse(row.model) : []
@@ -109,7 +109,7 @@ export async function setCharacterVoice(id: number, body: any) {
       provider,
       voiceId,
       voiceName,
-      previewUrl: sameVoice ? row.voicePreviewUrl : null,
+      clipUrl: sameVoice ? row.voiceClipUrl : null,
       meta: {
         config_id: config?.id ?? null,
         model: config?.model || null,
@@ -143,42 +143,57 @@ async function resolveSynthConfig(provider: string, configId: number | null): Pr
 }
 
 export async function previewCharacterVoice(id: number, body: any = {}) {
-  const row = await requireCharacter(id)
-  const bound = readCharacterVoice(row)
-  const provider = String(body?.provider || bound?.provider || '').trim().toLowerCase()
-  const voiceId = String(body?.voice_id ?? body?.voiceId ?? bound?.voice_id ?? '').trim()
+  let row = await requireCharacter(id)
+  const image = row.imageUrl || row.localPath || ''
+  if (!String(image).trim()) throw new Error('请先生成角色形象，再生成说话视频')
+
+  let bound = readCharacterVoice(row)
+  const requestedProvider = String(body?.provider || '').trim().toLowerCase()
+  const requestedVoiceId = String(body?.voice_id ?? body?.voiceId ?? '').trim()
+  if (requestedProvider && requestedVoiceId && (requestedProvider !== bound?.provider || requestedVoiceId !== bound?.voice_id)) {
+    await setCharacterVoice(id, body)
+    row = await requireCharacter(id)
+    bound = readCharacterVoice(row)
+  }
+  const provider = bound?.provider || ''
+  const voiceId = bound?.voice_id || ''
   if (!isOfficialProvider('tts', provider) || !voiceId) throw new Error('请先为角色选择音色')
 
   const requestedConfigId = Number(body?.config_id ?? body?.configId)
   const configId = Number.isFinite(requestedConfigId) && requestedConfigId > 0
     ? requestedConfigId
-    : bound?.provider === provider ? bound.config_id : null
+    : bound?.config_id ?? null
   const config = await resolveSynthConfig(provider, configId)
   const text = previewTextFor(row.name, body?.text)
   const audio = await getVoiceAdapter(provider).synthesize(config, { voiceId, text })
-  const previewUrl = await saveBinaryFile(audio, PREVIEW_DIR, '.mp3')
-
-  const isBound = bound?.provider === provider && bound.voice_id === voiceId
-  if (isBound) {
-    const meta = {
-      config_id: config.id ?? bound.config_id,
-      model: config.model || bound.model,
-      gender: bound.meta.gender || null,
-      language: bound.meta.language || null,
-      description: bound.meta.description || null,
-      sample_text: text,
-    }
-    await db.update(schema.characters).set({
-      voicePreviewUrl: previewUrl,
-      voiceMeta: JSON.stringify(meta),
-      updatedAt: now(),
-    }).where(eq(schema.characters.id, id))
+  const audioPath = await saveBinaryFile(audio, 'temp', '.mp3')
+  let clipUrl = ''
+  try {
+    clipUrl = await renderSpeakingClip(image, audioPath)
+  } finally {
+    const audioAbs = getAbsolutePath(audioPath)
+    if (fs.existsSync(audioAbs)) fs.unlinkSync(audioAbs)
   }
+
+  const meta = {
+    config_id: config.id ?? bound?.config_id ?? null,
+    model: config.model || bound?.model || null,
+    gender: bound?.meta.gender || null,
+    language: bound?.meta.language || null,
+    description: bound?.meta.description || null,
+    sample_text: text,
+  }
+  await db.update(schema.characters).set({
+    voiceClipUrl: clipUrl,
+    voicePreviewUrl: null,
+    voiceMeta: JSON.stringify(meta),
+    updatedAt: now(),
+  }).where(eq(schema.characters.id, id))
 
   const [fresh] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
   return {
-    preview_url: previewUrl,
-    saved: isBound,
+    clip_url: clipUrl,
+    saved: true,
     text,
     character: presentCharacter(fresh),
   }
