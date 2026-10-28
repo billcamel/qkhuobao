@@ -22,7 +22,7 @@
       @click="generateClip()"
     >
       <Loader2 v-if="generatingKey === 'bound'" :size="11" class="animate-spin" />
-      {{ clipUrl ? t('episode.asset.voice.regenClip') : t('episode.asset.voice.generateClip') }}
+      {{ generatingKey === 'bound' ? t('episode.asset.voice.generatingClip') : (clipUrl ? t('episode.asset.voice.regenClip') : t('episode.asset.voice.generateClip')) }}
     </button>
     <button type="button" class="btn btn-sm" @click="openPicker">
       {{ voice ? t('episode.asset.voice.change') : t('episode.asset.voice.pick') }}
@@ -122,11 +122,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Loader2, Play, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
-import { characterVoiceAPI } from '~/composables/useApi'
+import { characterVoiceAPI, taskAPI } from '~/composables/useApi'
 import { toastError } from '~/composables/useToast'
 
 const props = defineProps({
@@ -164,6 +164,7 @@ const voice = computed(() => {
 })
 
 const clipUrl = computed(() => voice.value?.clip_url || props.character?.voice_clip_url || props.character?.voiceClipUrl || '')
+const pendingTaskId = computed(() => Number(voice.value?.meta?.clip_task_id) || 0)
 const hasImage = computed(() => !!(props.character?.image_url || props.character?.imageUrl || props.character?.local_path || props.character?.localPath))
 
 const filteredGroups = computed(() => {
@@ -247,6 +248,44 @@ async function applyCustom() {
   }, 'custom')
 }
 
+let pollTimer = null
+let pollingId = 0
+let openWhenDone = false
+
+function stopPoll() {
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = null
+  pollingId = 0
+}
+
+function watchTask(taskId) {
+  if (!taskId || pollingId === taskId) return
+  pollingId = taskId
+  generatingKey.value = 'bound'
+  const tick = async () => {
+    if (pollingId !== taskId) return
+    try {
+      const task = await taskAPI.get(taskId)
+      if (task?.status === 'completed' || task?.status === 'failed') {
+        generatingKey.value = ''
+        pollingId = 0
+        const updated = await characterVoiceAPI.get(props.character.id)
+        emit('updated', updated)
+        if (task.status === 'completed') {
+          if (openWhenDone) playerOpen.value = true
+          toast.success(t('episode.asset.voice.clipReady'))
+        } else {
+          toastError(task.errorMsg || task.error_msg, { fallback: 'episode.asset.voice.previewFailed' })
+        }
+        openWhenDone = false
+        return
+      }
+    } catch { /* 下一轮再查 */ }
+    pollTimer = setTimeout(tick, 4000)
+  }
+  tick()
+}
+
 async function generateClip(group, item) {
   if (!props.character?.id) return
   if (!hasImage.value) {
@@ -255,20 +294,29 @@ async function generateClip(group, item) {
   }
   const key = group && item ? previewKey(group, item) : 'bound'
   generatingKey.value = key
+  openWhenDone = true
   try {
     const payload = group && item
       ? { provider: item.provider || group.provider, voice_id: item.voice_id, voice_name: item.name, config_id: group.config_id }
       : {}
     const res = await characterVoiceAPI.preview(props.character.id, payload)
     if (res?.character) emit('updated', res.character)
-    playerOpen.value = true
-    toast.success(t('episode.asset.voice.clipReady'))
+    if (res?.status === 'failed') {
+      generatingKey.value = ''
+      openWhenDone = false
+      toastError(res.error, { fallback: 'episode.asset.voice.previewFailed' })
+      return
+    }
+    if (res?.task_id) watchTask(res.task_id)
   } catch (err) {
-    toastError(err, { fallback: 'episode.asset.voice.previewFailed' })
-  } finally {
     generatingKey.value = ''
+    openWhenDone = false
+    toastError(err, { fallback: 'episode.asset.voice.previewFailed' })
   }
 }
+
+watch(pendingTaskId, (id) => { if (id) watchTask(id) }, { immediate: true })
+onBeforeUnmount(stopPoll)
 
 async function clearVoice() {
   if (!props.character?.id) return

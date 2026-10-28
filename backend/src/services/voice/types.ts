@@ -28,6 +28,7 @@ export interface CharacterVoice {
     language?: string | null
     description?: string | null
     sample_text?: string | null
+    clip_task_id?: number | null
   }
 }
 

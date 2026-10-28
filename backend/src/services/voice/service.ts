@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db, schema } from '../../db/index.js'
-import { isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../ai.js'
-import fs from 'node:fs'
-import { getAbsolutePath, saveBinaryFile } from '../../utils/storage.js'
-import { renderSpeakingClip } from './speaking-clip.js'
+import { getActiveConfig, isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../ai.js'
+import { saveBinaryFile } from '../../utils/storage.js'
+import { generateVideo } from '../generation.js'
+import { talkingClipPrompt, talkingClipRequest } from './talking-clip.js'
 import { now } from '../../utils/response.js'
 import { getVoiceAdapter } from './adapters.js'
 import { clearedVoiceColumns, presentCharacter, previewTextFor, readCharacterVoice, voiceColumnValues } from './binding.js'
@@ -164,17 +164,34 @@ export async function previewCharacterVoice(id: number, body: any = {}) {
     ? requestedConfigId
     : bound?.config_id ?? null
   const config = await resolveSynthConfig(provider, configId)
-  const text = previewTextFor(row.name, body?.text)
-  const audio = await getVoiceAdapter(provider).synthesize(config, { voiceId, text })
-  const audioPath = await saveBinaryFile(audio, 'temp', '.mp3')
-  let clipUrl = ''
-  try {
-    clipUrl = await renderSpeakingClip(image, audioPath)
-  } finally {
-    const audioAbs = getAbsolutePath(audioPath)
-    if (fs.existsSync(audioAbs)) fs.unlinkSync(audioAbs)
+  const pending = (await db.select().from(schema.sysTask).where(and(
+    eq(schema.sysTask.characterId, id),
+    eq(schema.sysTask.type, 'video'),
+    eq(schema.sysTask.status, 'processing'),
+  ))).find(task => {
+    try { return JSON.parse(task.params || '{}').purpose === 'voice_clip' } catch { return false }
+  })
+  if (pending) {
+    return { task_id: pending.id, status: 'processing', character: presentCharacter(row) }
   }
 
+  const videoConfig = await getActiveConfig('video')
+  if (!videoConfig) throw new Error('未配置视频模型，请先到设置页添加并启用')
+
+  const text = previewTextFor(row.name, body?.text)
+  const audio = await getVoiceAdapter(provider).synthesize(config, { voiceId, text })
+  const audioPath = await saveBinaryFile(audio, 'voice-audio', '.mp3')
+  const prompt = talkingClipPrompt(row.name, text)
+  const clipRequest = talkingClipRequest(videoConfig.provider, image, audioPath, prompt)
+  const taskId = await generateVideo({
+    characterId: id,
+    dramaId: row.dramaId,
+    configId: videoConfig.id,
+    voiceId,
+    ...clipRequest,
+  })
+
+  const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, taskId))
   const meta = {
     config_id: config.id ?? bound?.config_id ?? null,
     model: config.model || bound?.model || null,
@@ -182,18 +199,19 @@ export async function previewCharacterVoice(id: number, body: any = {}) {
     language: bound?.meta.language || null,
     description: bound?.meta.description || null,
     sample_text: text,
+    audio_url: audioPath,
+    ...(task?.status === 'processing' ? { clip_task_id: taskId } : {}),
   }
   await db.update(schema.characters).set({
-    voiceClipUrl: clipUrl,
-    voicePreviewUrl: null,
     voiceMeta: JSON.stringify(meta),
     updatedAt: now(),
   }).where(eq(schema.characters.id, id))
 
   const [fresh] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
   return {
-    clip_url: clipUrl,
-    saved: true,
+    task_id: taskId,
+    status: task?.status || 'processing',
+    error: task?.status === 'failed' ? task.errorMsg : null,
     text,
     character: presentCharacter(fresh),
   }

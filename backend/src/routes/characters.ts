@@ -105,7 +105,7 @@ app.post('/:id/voice/preview', async (c) => {
   try {
     logTaskStart('CharacterVoice', 'preview', { characterId: id, provider: body?.provider })
     const result = await previewCharacterVoice(id, body)
-    logTaskSuccess('CharacterVoice', 'preview', { characterId: id, saved: result.saved })
+    logTaskSuccess('CharacterVoice', 'preview', { characterId: id, taskId: result.task_id, status: result.status })
     return success(c, result)
   } catch (err: any) {
     logTaskError('CharacterVoice', 'preview', { characterId: id, error: err?.message })

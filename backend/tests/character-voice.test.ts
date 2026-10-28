@@ -4,7 +4,7 @@ import Database from 'better-sqlite3'
 import { initSqliteSchema } from '../src/db/sqlite-schema.ts'
 import { presentCharacter, previewTextFor, readCharacterVoice } from '../src/services/voice/binding.ts'
 import { appendVoiceClipNote, collectVoiceClips, voiceClipLimit } from '../src/services/video-request.ts'
-import { speakingClipFilter } from '../src/services/voice/speaking-clip.ts'
+import { talkingClipPrompt, talkingClipRequest } from '../src/services/voice/talking-clip.ts'
 import {
   buildMinimaxSpeechRequest,
   buildOpenAiSpeechRequest,
@@ -122,7 +122,25 @@ test('speaking clips are attached as reference videos, not audio', () => {
   const prompt = appendVoiceClipNote('开场', clips.slice(0, 1))
   assert.match(prompt, /@视频1 是林小雨的说话样本/)
   assert.equal(appendVoiceClipNote('开场', []), '开场')
-  assert.equal(speakingClipFilter(), 'scale=trunc(iw/2)*2:trunc(ih/2)*2')
+})
+
+test('talking preview asks the video model for lip sync from the portrait and the voice line', () => {
+  const line = '大家好，我是林小雨。'
+  const prompt = talkingClipPrompt('林小雨', line)
+  assert.match(prompt, /口型与参考音频一致/)
+  assert.match(prompt, /大家好，我是林小雨/)
+  const seedance = talkingClipRequest('volcengine', 'static/face.png', 'static/voice-audio/a.mp3', prompt)
+  assert.deepEqual(seedance.referenceImageUrls, ['static/face.png'])
+  assert.deepEqual(seedance.referenceAudioUrls, ['static/voice-audio/a.mp3'])
+  assert.equal(seedance.firstFrameUrl, undefined)
+  assert.equal(seedance.purpose, 'voice_clip')
+  assert.equal(seedance.generateAudio, true)
+  const minimax = talkingClipRequest('minimax', 'static/face.png', 'static/voice-audio/a.mp3', prompt)
+  assert.equal(minimax.firstFrameUrl, 'static/face.png')
+  assert.equal(minimax.referenceImageUrls, undefined)
+  const wan = talkingClipRequest('aliyun', 'static/face.png', 'static/voice-audio/a.mp3', prompt)
+  assert.deepEqual(wan.referenceImageUrls, ['static/face.png'])
+  assert.equal(wan.firstFrameUrl, undefined)
 })
 
 test('existing character tables gain voice columns on startup', () => {

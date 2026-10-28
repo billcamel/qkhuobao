@@ -44,6 +44,7 @@ export function readCharacterVoice(row: CharacterRow | null | undefined): Charac
       language: typeof meta.language === 'string' ? meta.language : null,
       description: typeof meta.description === 'string' ? meta.description : null,
       sample_text: typeof meta.sample_text === 'string' ? meta.sample_text : null,
+      clip_task_id: Number(meta.clip_task_id) > 0 ? Number(meta.clip_task_id) : null,
     },
   }
 }
