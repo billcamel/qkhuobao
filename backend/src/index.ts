@@ -83,7 +83,19 @@ app.use('/static/*', serveStatic({ root: DATA_ROOT }))
 
 // Serve frontend (production build) — 桌面版由主进程注入 FRONTEND_DIST（resources/frontend）
 const distPath = process.env.FRONTEND_DIST || path.join(projectRoot, 'frontend', 'dist')
+// HTML 一律不缓存：否则重新部署后浏览器还在用旧 index.html，引用的还是旧 JS 分包，
+// 表现为「刷新了还是旧界面」。带内容哈希的 _nuxt 资源才长缓存。
+app.use('*', async (c, next) => {
+  await next()
+  if (c.res.ok && /text\/html/i.test(c.res.headers.get('content-type') || '')) {
+    c.header('Cache-Control', 'no-store, must-revalidate')
+  }
+})
 app.use('*', serveStatic({ root: distPath }))
+app.use('/_nuxt/*', async (c, next) => {
+  await next()
+  if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable')
+})
 app.get('*', serveStatic({ root: distPath, path: 'index.html' }))
 
 const port = Number(process.env.PORT || 5679)
