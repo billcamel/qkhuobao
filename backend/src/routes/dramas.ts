@@ -3,6 +3,7 @@ import { and, eq, isNull, like, desc } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, badRequest, notFound, created, now } from '../utils/response.js'
 import { toSnakeCase, toSnakeCaseArray } from '../utils/transform.js'
+import { presentCharacter } from '../services/voice/service.js'
 
 const app = new Hono()
 
@@ -37,7 +38,7 @@ app.get('/', async (c) => {
       tags: drama.tags ? JSON.parse(drama.tags) : [],
       total_episodes: eps.length,
       episodes: toSnakeCaseArray(eps),
-      characters: toSnakeCaseArray(chars),
+      characters: chars.map(ch => presentCharacter(ch)),
       scenes: toSnakeCaseArray(scns),
     }
   }))
@@ -104,7 +105,7 @@ app.get('/:id', async (c) => {
     ...toSnakeCase(drama),
     tags: drama.tags ? JSON.parse(drama.tags) : [],
     episodes: toSnakeCaseArray(eps),
-    characters: toSnakeCaseArray(chars),
+    characters: chars.map(ch => presentCharacter(ch)),
     scenes: toSnakeCaseArray(scns),
     props: toSnakeCaseArray(prps),
   })

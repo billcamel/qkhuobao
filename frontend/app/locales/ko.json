@@ -28,7 +28,8 @@
     "serviceType": {
       "text": "텍스트",
       "image": "이미지",
-      "video": "영상"
+      "video": "영상",
+      "tts": "음성"
     }
   },
   "layout": {
@@ -295,7 +296,8 @@
       "meta": {
         "text": "대본 재작성, 캐릭터·장면 추출, 스토리보드 분해 등 Agent 텍스트 기능",
         "image": "캐릭터 이미지, 장면 이미지, 샷 이미지 등 정지 이미지 생성",
-        "video": "샷 영상 직접 생성(기본 Seedance 2.0)"
+        "video": "샷 영상 직접 생성(기본 Seedance 2.0)",
+        "tts": "캐릭터 음색 미리듣기와 이후 더빙이 읽을 음색입니다. 선택 사항이며 이미지와 영상에는 영향이 없습니다"
       }
     },
     "styles": {
@@ -410,7 +412,10 @@
       "reachable": "엔드포인트가 응답했습니다",
       "unreachable": "엔드포인트 테스트에 실패했습니다",
       "providerRequired": "제공업체를 선택하세요",
-      "tempInvalid": "Temperature는 0~2 사이의 숫자여야 합니다"
+      "tempInvalid": "Temperature는 0~2 사이의 숫자여야 합니다",
+      "appId": "App ID",
+      "appIdHint": "Volcengine 음성 합성 App ID입니다. API Key에는 Access Token을 넣습니다. 둘은 다른 값입니다.",
+      "volcengineClusterHint": "Doubao 음성의 모델 이름은 cluster입니다. 대형 모델 음색은 보통 volcano_tts입니다."
     },
     "styleDialog": {
       "editTitle": "스타일 프리셋 편집",
@@ -558,6 +563,47 @@
       "lighting": "조명 · ",
       "appearanceTodo": "외모 미입력",
       "stylingTodo": "스타일링 미입력",
+      "voice": {
+        "label": "음색",
+        "unset": "미설정",
+        "pick": "선택",
+        "change": "변경",
+        "clear": "지우기",
+        "preview": "미리듣기",
+        "stop": "정지",
+        "previewing": "미리듣기 생성 중…",
+        "saved": "음색을 업데이트했습니다",
+        "cleared": "음색을 지웠습니다",
+        "previewReady": "미리듣기를 생성했습니다",
+        "previewFailed": "미리듣기 생성에 실패했습니다",
+        "saveFailed": "음색을 저장하지 못했습니다",
+        "clearFailed": "음색을 지우지 못했습니다",
+        "empty": "사용할 수 있는 음색이 없습니다. 설정에서 「음성」 서비스를 추가하고 켜 주세요.",
+        "goSettings": "설정으로",
+        "dialogTitle": "음색 선택",
+        "dialogSub": "{name}의 음색입니다. 미리듣기는 현재 영상 모델이 캐릭터 이미지와 이 목소리로 입 모양이 맞는 짧은 말하기 영상을 만듭니다. 시간이 걸립니다.",
+        "generateClip": "미리듣기 생성",
+        "generatingClip": "입 모양 생성 중",
+        "regenClip": "다시 생성",
+        "needImage": "말하기 영상 전에 캐릭터 이미지를 먼저 생성하세요",
+        "clipReady": "말하기 영상을 생성했습니다",
+        "play": "말하기 영상 재생",
+        "search": "이름 또는 ID 검색",
+        "apply": "사용",
+        "applied": "현재",
+        "noMatch": "일치하는 음색이 없습니다",
+        "custom": "사용자 지정 음색 ID",
+        "customId": "음색 ID",
+        "customName": "표시 이름(선택)",
+        "customHint": "목록에 없는 복제 음색은 제공업체의 voice id를 입력하세요.",
+        "narrators": "내레이션",
+        "gender": {
+          "female": "여",
+          "male": "남",
+          "neutral": "중성",
+          "child": "아"
+        }
+      },
       "sceneDescTodo": "장면 설명 미입력",
       "sceneLightTodo": "장면 조명 미입력",
       "noDescription": "설명이 없습니다",

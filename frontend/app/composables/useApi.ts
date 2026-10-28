@@ -85,6 +85,14 @@ export const storyboardAPI = {
   reviewBoard: (id: number, status: 'approved' | 'rejected' | 'pending') => api.post(`/storyboards/${id}/board-review`, { status }),
 }
 
+export const characterVoiceAPI = {
+  list: () => api.get('/voices'),
+  get: (id: number) => api.get(`/characters/${id}/voice`),
+  set: (id: number, data: any) => api.put(`/characters/${id}/voice`, data),
+  clear: (id: number) => api.del(`/characters/${id}/voice`),
+  preview: (id: number, data?: any) => api.post(`/characters/${id}/voice/preview`, data || {}),
+}
+
 export const characterAPI = {
   create: (data: any) => api.post('/characters', data),
   update: (id: number, data: any) => api.put(`/characters/${id}`, data),

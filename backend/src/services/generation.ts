@@ -72,6 +72,11 @@ interface GenerateVideoParams {
   watermark?: boolean
   configId?: number
   forceNew?: boolean
+  characterId?: number
+  /** voice_clip：角色口型试听，完成后回写 characters.voice_clip_url，不写分镜视频 */
+  purpose?: string
+  /** 口型任务绑定的音色；完成时若角色已换音色则不覆盖新片段 */
+  voiceId?: string
   /** 本次是否挂了故事板关键帧参考（真人审核被拒时据此自动降级重提） */
   boardReference?: boolean
   /** 自动降级重提时记录原任务 ID，避免循环重提 */
@@ -137,6 +142,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     const id = await createTask('video', config, {
       storyboardId: params.storyboardId,
       dramaId: params.dramaId,
+      characterId: params.characterId,
       prompt: params.prompt,
       model: params.model || config.model,
     }, {
@@ -159,6 +165,8 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
       watermark: params.watermark,
       boardReference: params.boardReference ? 1 : undefined,
       boardFallbackFrom: params.boardFallbackFrom,
+      purpose: params.purpose,
+      voiceId: params.voiceId,
     })
 
     logTaskStart('VideoTask', 'enqueue', {
@@ -376,10 +384,27 @@ async function markPolling(id: number, taskId: string | undefined) {
 async function failTask(id: number, message: string, code?: string) {
   message = safeTaskError(message)
   logTaskError('SysTask', 'failed', { id, error: message })
+  const [record] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
   await db.update(schema.sysTask)
     .set({ status: 'failed', errorMsg: safeTaskError(message), ...(code ? { errorCode: code } : {}), updatedAt: now() })
     .where(eq(schema.sysTask.id, id))
+  if (record && parseTaskParams(record.params).purpose === 'voice_clip') await clearVoiceClipTask(record.characterId, id)
   if (PRIVACY_REJECTION_RE.test(message)) await fallbackWithoutBoardReference(id)
+}
+
+/** 口型任务结束（成功或失败）后去掉角色上的进行中标记，避免界面一直转圈 */
+async function clearVoiceClipTask(characterId: number | null | undefined, taskId: number) {
+  if (!characterId) return
+  const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, characterId))
+  if (!char?.voiceMeta) return
+  let meta: Record<string, any> = {}
+  try { meta = JSON.parse(char.voiceMeta) } catch { return }
+  if (Number(meta.clip_task_id) !== taskId) return
+  delete meta.clip_task_id
+  await db.update(schema.characters).set({
+    voiceMeta: JSON.stringify(meta),
+    updatedAt: now(),
+  }).where(eq(schema.characters.id, characterId))
 }
 
 /**
@@ -583,7 +608,7 @@ async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
 
 async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, duration: number | null | undefined) {
   // 先落库地址与实际时长；后续下载失败仍可恢复，且不重新提交生成。
-  const params = { ...parseTaskParams(record.params), resultDuration: duration }
+  const params: Record<string, any> = { ...parseTaskParams(record.params), resultDuration: duration }
   await db.update(schema.sysTask).set({ resultUrl: videoUrl, params: JSON.stringify(params),
     stage: 'downloading', status: 'processing', errorCode: null, errorMsg: null, updatedAt: now() })
     .where(eq(schema.sysTask.id, record.id))
@@ -593,12 +618,32 @@ async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, dura
     await db.update(schema.sysTask).set({ localPath, stage: 'saving', updatedAt: now() }).where(eq(schema.sysTask.id, record.id))
     await extractVideoPoster(localPath)
     // 完成状态与业务回写原子提交；恢复旧任务不能覆盖用户后来生成的视频。
+    const voiceClip = params.purpose === 'voice_clip' && record.characterId
+      ? await db.select().from(schema.characters).where(eq(schema.characters.id, record.characterId))
+      : []
+    let voiceMeta = voiceClip[0]?.voiceMeta || null
+    const sameVoice = !params.voiceId || voiceClip[0]?.voiceId === params.voiceId
+    if (voiceClip[0]) {
+      let meta: Record<string, any> = {}
+      try { meta = voiceMeta ? JSON.parse(voiceMeta) : {} } catch { meta = {} }
+      delete meta.clip_task_id
+      voiceMeta = JSON.stringify(meta)
+    }
     db.transaction(tx => {
       const newer = record.storyboardId ? tx.select({ id: schema.sysTask.id }).from(schema.sysTask)
         .where(and(eq(schema.sysTask.storyboardId, record.storyboardId), eq(schema.sysTask.type, 'video'), gt(schema.sysTask.id, record.id))).get() : null
-      if (record.storyboardId && !newer) tx.update(schema.storyboards)
+      if (record.storyboardId && !newer && params.purpose !== 'voice_clip') tx.update(schema.storyboards)
         .set({ videoUrl: localPath, duration: duration || undefined, updatedAt: now() })
         .where(eq(schema.storyboards.id, record.storyboardId)).run()
+      if (voiceClip[0] && sameVoice) tx.update(schema.characters).set({
+        voiceClipUrl: localPath,
+        voiceMeta,
+        updatedAt: now(),
+      }).where(eq(schema.characters.id, record.characterId!)).run()
+      else if (voiceClip[0]) tx.update(schema.characters).set({
+        voiceMeta,
+        updatedAt: now(),
+      }).where(eq(schema.characters.id, record.characterId!)).run()
       tx.update(schema.sysTask).set({ localPath, status: 'completed', stage: 'completed', errorCode: null,
         errorMsg: null, completedAt: now(), updatedAt: now() }).where(eq(schema.sysTask.id, record.id)).run()
     })

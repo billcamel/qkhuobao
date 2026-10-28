@@ -11,6 +11,7 @@ import { latestAgentTask, runningAgentTasks, serializeAgentTask } from '../servi
 import { listStoryboardSnapshots, restoreStoryboardSnapshot } from '../services/storyboard-snapshots.js'
 import { listScriptScenes } from '../services/board-store.js'
 import { boardReferenceState, cleanImagesByStoryboard, isBoardRefBlocked, storyboardHasCharacters } from '../services/video-request.js'
+import { dubbingCastForEpisode, presentCharacter } from '../services/voice/service.js'
 import { generateBoardImage } from '../services/board-image.js'
 
 const app = new Hono()
@@ -105,7 +106,15 @@ app.get('/:id/characters', async (c) => {
   if (!charIds.length) return success(c, [])
   const allChars = await db.select().from(schema.characters)
   const result = allChars.filter(ch => charIds.includes(ch.id) && !ch.deletedAt)
-  return success(c, toSnakeCaseArray(result))
+  return success(c, result.map(ch => presentCharacter(ch)))
+})
+
+// GET /episodes/:id/dubbing-cast — 本集角色与已绑定音色，供后续配音/导出读取
+app.get('/:id/dubbing-cast', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+  return success(c, { episode_id: episodeId, characters: await dubbingCastForEpisode(episodeId) })
 })
 
 // GET /episodes/:id/scenes — scenes linked to this episode
@@ -307,7 +316,7 @@ app.get('/:episode_id/storyboards', async (c) => {
     prop_ids: propIdsByStoryboard.get(row.id) || [],
     characters: allChars
       .filter(ch => (charIdsByStoryboard.get(row.id) || []).includes(ch.id))
-      .map(ch => toSnakeCase(ch)),
+      .map(ch => presentCharacter(ch)),
     props: allProps
       .filter(p => (propIdsByStoryboard.get(row.id) || []).includes(p.id))
       .map(p => toSnakeCase(p)),

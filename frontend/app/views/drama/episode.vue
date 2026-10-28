@@ -378,6 +378,7 @@
                       </button>
                     </div>
                   </div>
+                  <CharacterVoiceControl :character="c" @updated="onCharacterVoiceUpdated" />
                   <div class="asset-final-prompt" :title="c.final_prompt || c.finalPrompt || ''">
                     <span class="afp-label">{{ t('episode.asset.finalPromptTurnaround') }}</span>
                     <span :class="['afp-text', !(c.final_prompt || c.finalPrompt) && 'dim']">{{ c.final_prompt || c.finalPrompt || t('episode.asset.finalPromptAutoTurnaround') }}</span>
@@ -385,6 +386,20 @@
                 </div>
               </article>
             </div>
+            </template>
+            <template v-if="narratorChars.length">
+              <div class="asset-section-title">{{ t('episode.asset.voice.narrators') }}</div>
+              <div class="character-asset-grid">
+                <article v-for="c in narratorChars" :key="'narrator-' + c.id" class="card character-asset-card">
+                  <div class="character-asset-main">
+                    <div class="character-name-row">
+                      <strong class="character-name">{{ c.name }}</strong>
+                      <span class="tag">{{ c.role || t('episode.asset.voice.narrators') }}</span>
+                    </div>
+                    <CharacterVoiceControl :character="c" @updated="onCharacterVoiceUpdated" />
+                  </div>
+                </article>
+              </div>
             </template>
 
             <div class="asset-section-title">
@@ -861,6 +876,17 @@
                       <span class="tag mono">{{ videoPreview ? videoPreview.references.length : boundRefAssets.length }}</span>
                     </div>
                     <!-- 与实际请求一致：顺序即 @图片N 编号，故事板段第 1 张为净版关键帧 -->
+                    <div v-if="videoPreview && videoPreview.reference_audios?.length" class="video-voice-audios">
+                      <div
+                        v-for="audio in videoPreview.reference_audios"
+                        :key="'voice-audio-' + audio.index"
+                        class="video-voice-audio"
+                        :title="`@音频${audio.index} · ${audio.name}`"
+                      >
+                        <span class="video-ref-index mono">@音频{{ audio.index }} · {{ audio.name }}</span>
+                        <audio :src="assetImageSrc({ imageUrl: audio.url })" controls preload="none" />
+                      </div>
+                    </div>
                     <div v-if="videoPreview && videoPreview.references.length" class="video-bound-refs">
                       <button
                         v-for="ref in videoPreview.references"
@@ -1300,6 +1326,11 @@
                     />
                   </label>
                 </div>
+                <CharacterVoiceControl
+                  v-if="assetDetail.type === 'character'"
+                  :character="assetDetail.item"
+                  @updated="onCharacterVoiceUpdated"
+                />
 
               </section>
             </div>
@@ -2236,6 +2267,14 @@ function isNarratorCharacter(char) {
 }
 
 const visualChars = computed(() => chars.value.filter(c => !isNarratorCharacter(c)))
+const narratorChars = computed(() => chars.value.filter(c => isNarratorCharacter(c)))
+
+function onCharacterVoiceUpdated(updated) {
+  if (!updated?.id) return
+  const target = chars.value.find(c => c.id === updated.id)
+  if (target) Object.assign(target, updated)
+  if (assetDetail.value.item?.id === updated.id) Object.assign(assetDetail.value.item, updated)
+}
 const lockedVideoConfigId = computed(() => episode.value?.video_config_id || episode.value?.videoConfigId || null)
 // 集视频分辨率：顶栏直接修改（持久化 episodes.resolution，生成任务按此值锁定）。
 // 内部统一存 480p/720p/1080p 三档，界面按当前选中的视频模型显示厂商原生档位
@@ -5510,6 +5549,9 @@ button.video-task-metric.on { box-shadow: 0 0 0 2px var(--accent); }
 .video-inspector-action { width: 100%; min-height: 32px; height: 32px; padding: 0 12px; font-size: 12.5px; }
 /* 绑定参考图：当前分镜已绑定素材的图片平铺（生成时作为参考图提交） */
 .video-bound-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.video-voice-audios { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.video-voice-audio { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.video-voice-audio audio { width: 100%; height: 32px; }
 .video-bound-ref {
   position: relative;
   aspect-ratio: 1;

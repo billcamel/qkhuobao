@@ -253,6 +253,7 @@
                       </button>
                     </div>
                   </div>
+                  <CharacterVoiceControl :character="m" @updated="onCharacterVoiceUpdated" />
                   <div class="asset-final-prompt" :title="m.finalPrompt || ''">
                     <span class="afp-label">{{ t('episode.asset.finalPromptTurnaround') }}</span>
                     <span :class="['afp-text', !m.finalPrompt && 'dim']">{{ m.finalPrompt || t('episode.asset.finalPromptAutoTurnaround') }}</span>
@@ -451,6 +452,11 @@
                     <textarea v-model="editDraft.lighting" class="textarea mat-detail-textarea" rows="5" :placeholder="t('episode.asset.sceneLightPlaceholder')" />
                   </label>
                 </div>
+                <CharacterVoiceControl
+                  v-if="editTarget.kindKey === 'character'"
+                  :character="editTarget"
+                  @updated="onCharacterVoiceUpdated"
+                />
               </section>
             </div>
 
@@ -846,6 +852,15 @@ const editDialog = ref(false)
 const editSaving = ref(false)
 const editTarget = ref(null)
 const editDraft = reactive({})
+
+function onCharacterVoiceUpdated(updated) {
+  if (!updated?.id || !drama.value?.characters) return
+  const idx = drama.value.characters.findIndex(c => c.id === updated.id)
+  if (idx >= 0) drama.value.characters[idx] = { ...drama.value.characters[idx], ...updated }
+  if (editTarget.value?.id === updated.id && editTarget.value?.kindKey === 'character') {
+    editTarget.value = { ...editTarget.value, ...updated, kindKey: 'character', kind: editTarget.value.kind }
+  }
+}
 
 function openEdit(m) {
   editTarget.value = m

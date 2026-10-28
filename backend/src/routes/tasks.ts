@@ -174,6 +174,8 @@ app.post('/', async (c) => {
         })
         if (!input) return badRequest(c, '分镜不存在')
         videoBody.reference_image_urls = input.references.map(r => r.imageUrl)
+        // 角色音色走 reference_audio（TTS 样本）。说话短视频只在资产页试听，不放进 reference_video。
+        videoBody.reference_audio_urls = input.voiceAudios.map(audio => audio.url)
         videoBody.prompt = input.prompt
         // 有故事板时以故事板时间轴为准，避免提示词按秒分段与视频时长错位
         if (input.duration) videoBody.duration = input.duration
