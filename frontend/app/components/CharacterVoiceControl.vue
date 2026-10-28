@@ -184,7 +184,11 @@ const voice = computed(() => {
 })
 
 const audioUrl = computed(() => voice.value?.audio_url || '')
-const clipUrl = computed(() => voice.value?.clip_url || '')
+// 说话视频独立取值：没有参考音频时 voice 为 null，但口型视频可能已经生成过
+const clipUrl = computed(() => {
+  const c = props.character
+  return c?.voice?.clip_url || c?.voice_clip_url || c?.voiceClipUrl || ''
+})
 const pendingTaskId = computed(() => Number(voice.value?.meta?.clip_task_id) || 0)
 const hasImage = computed(() => !!(props.character?.image_url || props.character?.imageUrl || props.character?.local_path || props.character?.localPath))
 
