@@ -593,7 +593,7 @@
         "fileInvalid": "mp3, wav, m4a, aac 오디오를 업로드하세요",
         "playAudio": "참조 오디오 재생",
         "playClip": "말하기 영상 재생",
-        "generateClip": "말하기 영상",
+        "generateClip": "토킹 영상 생성",
         "generatingClip": "입 모양 생성 중",
         "regenClip": "말하기 영상 다시 만들기",
         "clipReady": "말하기 영상을 생성했습니다",

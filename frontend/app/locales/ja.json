@@ -593,7 +593,7 @@
         "fileInvalid": "mp3、wav、m4a、aac の音声をアップロードしてください",
         "playAudio": "参考音声を再生",
         "playClip": "発話動画を再生",
-        "generateClip": "発話動画",
+        "generateClip": "トーキング動画を生成",
         "generatingClip": "口の動きを生成中",
         "regenClip": "発話動画をやり直す",
         "clipReady": "発話動画を生成しました",

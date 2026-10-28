@@ -16,11 +16,21 @@
     <button
       v-if="clipUrl"
       type="button"
-      class="btn btn-sm btn-ghost char-voice-icon"
+      class="btn btn-sm char-voice-clip-btn"
       :title="t('episode.asset.voice.playClip')"
       @click="openPlayer('clip')"
     >
       <Clapperboard :size="12" />
+      {{ t('episode.asset.voice.playClip') }}
+    </button>
+    <button
+      v-else-if="pendingTaskId"
+      type="button"
+      class="btn btn-sm char-voice-clip-btn"
+      disabled
+    >
+      <Loader2 :size="12" class="animate-spin" />
+      {{ t('episode.asset.voice.generatingClip') }}
     </button>
     <button
       v-if="hasImage"

@@ -593,7 +593,7 @@
         "fileInvalid": "请上传 mp3、wav、m4a 或 aac 音频",
         "playAudio": "播放参考音频",
         "playClip": "播放说话视频",
-        "generateClip": "说话视频",
+        "generateClip": "生成说话视频",
         "generatingClip": "口型生成中",
         "regenClip": "重做说话视频",
         "clipReady": "说话视频已生成",

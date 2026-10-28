@@ -593,7 +593,7 @@
         "fileInvalid": "Upload an mp3, wav, m4a, or aac file",
         "playAudio": "Play reference audio",
         "playClip": "Play speaking video",
-        "generateClip": "Speaking video",
+        "generateClip": "Generate talking video",
         "generatingClip": "Lip-sync…",
         "regenClip": "Redo speaking video",
         "clipReady": "Speaking video ready",
