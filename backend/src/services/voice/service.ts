@@ -151,12 +151,12 @@ async function synthesizeReference(config: VoiceConfig, voiceId: string, fallbac
 /** 用已保存的参考音频和形象照做口型试听。不重新选音色，也不再合成一条新的参考音频。 */
 async function enqueueTalkingClip(
   row: typeof schema.characters.$inferSelect,
-  audioUrl: string,
+  audioUrl: string | null,
   text: string,
   videoConfig: AIConfig,
 ) {
   const image = String(row.imageUrl || row.localPath || '').trim()
-  let voiceKey = String(row.voiceId || '').trim() || localVoiceKey(audioUrl)
+  let voiceKey = String(row.voiceId || '').trim() || (audioUrl ? localVoiceKey(audioUrl) : 'model-native-audio')
   const processing = await db.select().from(schema.sysTask).where(and(
     eq(schema.sysTask.characterId, row.id),
     eq(schema.sysTask.type, 'video'),
@@ -167,8 +167,8 @@ async function enqueueTalkingClip(
     await mergeClipMeta(row.id, text, pending.id)
     return { taskId: pending.id, status: 'processing' as const }
   }
-  const assetKey = localVoiceKey(audioUrl)
-  if (voiceKey !== assetKey) {
+  const assetKey = audioUrl ? localVoiceKey(audioUrl) : null
+  if (assetKey && voiceKey !== assetKey) {
     voiceKey = assetKey
     await db.update(schema.characters).set({
       voiceProvider: 'local',
@@ -194,9 +194,9 @@ export async function previewCharacterVoice(id: number, body: any = {}) {
   const row = await requireCharacter(id)
   const image = String(row.imageUrl || row.localPath || '').trim()
   if (!image) throw new Error('请先生成角色形象，再生成说话视频')
-  const audioUrl = normalizeLocalAudioUrl(row.voicePreviewUrl)
-  if (!audioUrl) throw new Error('请先保存参考音频，再生成说话视频')
-  if (!localAudioExists(audioUrl)) throw new Error('参考音频不存在或已删除')
+  // 参考音频改为可选：没有就按角色形象与台词直接生成，由视频模型自己出声
+  const savedAudio = normalizeLocalAudioUrl(row.voicePreviewUrl)
+  const audioUrl = savedAudio && localAudioExists(savedAudio) ? savedAudio : null
   const videoConfig = await getActiveConfig('video')
   if (!videoConfig) throw new Error('未配置视频模型，请先到设置页添加并启用')
   const meta = parseVoiceMeta(row.voiceMeta)

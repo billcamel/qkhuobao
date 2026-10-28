@@ -39,13 +39,15 @@ export interface TalkingClipRequest {
 export function talkingClipRequest(
   provider: string,
   imageUrl: string,
-  audioUrl: string,
+  audioUrl: string | null | undefined,
   prompt: string,
   aspectRatio?: string | null,
 ): TalkingClipRequest {
+  // 有参考音频就用它锁音色；没有就交给视频模型按提示词自己出声，不阻塞
+  const audios = audioUrl ? [audioUrl] : []
   const base: TalkingClipRequest = {
     prompt,
-    referenceAudioUrls: [audioUrl],
+    referenceAudioUrls: audios,
     duration: TALKING_CLIP_SECONDS,
     aspectRatio: normalizeAspect(aspectRatio),
     generateAudio: true,
