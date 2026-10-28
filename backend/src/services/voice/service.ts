@@ -182,7 +182,8 @@ async function enqueueTalkingClip(
     characterId: row.id,
     dramaId: row.dramaId,
     configId: videoConfig.id,
-    voiceId: voiceKey,
+    // 没有参考音频时不要传 voiceId，否则任务完成回调会判定「音色已变」而不回写 voice_clip_url
+    voiceId: audioUrl ? voiceKey : undefined,
     ...clipRequest,
   })
   const [task] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, taskId))
