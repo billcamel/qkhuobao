@@ -788,24 +788,47 @@ async function normalizeVideoReferenceUrls(refs: string[] | null | undefined): P
 
 /**
  * 将参考视频/音频解析为 Seedance API 可访问的 URL。
- * http(s)/dataURL 直通；本地 static 路径需要 PUBLIC_BASE_URL 拼成公网地址，
- * 未配置时抛出可操作的中文错误（落入 catch 写入 error_msg 供前端展示）。
+ * 优先级：http(s)/dataURL 直通 → 配了 PUBLIC_BASE_URL 就拼公网地址 →
+ * 否则把本地 static 文件读成 base64 data URL 直传（内网部署无需公网域名，
+ * 上游实测接受 data URL）。文件过大才报错。
  */
+const INLINE_MEDIA_MIME: Record<string, string> = {
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.ogg': 'audio/ogg',
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.m4v': 'video/x-m4v',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.pdf': 'application/pdf', '.json': 'application/json', '.txt': 'text/plain',
+}
+/** 单文件内联上限：base64 会膨胀 ~33%，留出请求体余量 */
+const MAX_INLINE_MEDIA_BYTES = 8 * 1024 * 1024
+
+function readLocalMediaAsDataUrl(relativePath: string): string | null {
+  try {
+    const abs = getAbsolutePath(relativePath.startsWith('/') ? relativePath.slice(1) : relativePath)
+    const stat = fs.statSync(abs)
+    if (!stat.isFile() || stat.size === 0 || stat.size > MAX_INLINE_MEDIA_BYTES) return null
+    const ext = (abs.match(/\.[^./\\]+$/) || [''])[0].toLowerCase()
+    const mime = INLINE_MEDIA_MIME[ext] || 'application/octet-stream'
+    return `data:${mime};base64,${fs.readFileSync(abs).toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
 function resolvePublicMediaUrl(value: string | null | undefined, kind: 'video' | 'audio' | 'file'): string | null {
   const raw = String(value || '').trim()
   if (!raw) return null
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
   if (raw.startsWith('static/') || raw.startsWith('/static/')) {
+    const rel = raw.startsWith('/') ? raw.slice(1) : raw
     const base = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
-    if (!base) {
-      const label = kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '文件'
-      throw new Error(
-        `参考${label}为本地路径 ${raw}，但后端未配置 PUBLIC_BASE_URL，上游视频生成 API 无法访问内网地址。` +
-        `请在 backend/.env 配置 PUBLIC_BASE_URL（如 https://your-domain.com）后重试，或改用公网 URL。`,
-      )
-    }
-    const p = raw.startsWith('/') ? raw : `/${raw}`
-    return `${base}${p}`
+    if (base) return `${base}/${rel}`
+    const inline = readLocalMediaAsDataUrl(rel)
+    if (inline) return inline
+    const label = kind === 'video' ? '视频' : kind === 'audio' ? '音频' : '文件'
+    throw new Error(
+      `参考${label}为本地路径 ${raw}，但文件不存在或超过 ${MAX_INLINE_MEDIA_BYTES / 1024 / 1024}MB 无法内联上传。` +
+      `请改用公网 URL，或在 backend/.env 配置 PUBLIC_BASE_URL 后重试。`,
+    )
   }
   return raw
 }
