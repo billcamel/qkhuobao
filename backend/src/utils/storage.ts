@@ -142,6 +142,61 @@ export function readImageAsDataUrl(relativePath: string): string {
   return `data:${mimeType};base64,${buffer.toString('base64')}`
 }
 
+/**
+ * 视频参考图允许的宽高比区间。超宽分镜净版长图（多格横排 3840x1080=3.56、4096x768=5.33）
+ * 会被 Seedance 直接 400：expected the aspect ratio to be between 0.39 and 2.50。
+ * 这里把越界的参考图垫边到合法比例（模糊铺底 + 居中贴原图），不改内容也不拉伸变形。
+ */
+const VIDEO_REF_MIN_RATIO = 0.4
+const VIDEO_REF_MAX_RATIO = 2.48
+
+/** 视频参考图 → data URL；宽高比越界时自动垫边到合法区间（保留原图内容与比例） */
+export async function readVideoReferenceDataUrl(relativePath: string): Promise<string> {
+  const filePath = getAbsolutePath(relativePath)
+  const meta = await sharp(filePath).rotate().metadata()
+  const width = meta.width || 0
+  const height = meta.height || 0
+  if (!width || !height) return readImageAsDataUrl(relativePath)
+  const ratio = width / height
+  if (ratio >= VIDEO_REF_MIN_RATIO && ratio <= VIDEO_REF_MAX_RATIO) return readImageAsDataUrl(relativePath)
+
+  const padded = await padToVideoRefRatio(filePath, width, height, ratio)
+  console.warn(`[storage] 参考图宽高比 ${ratio.toFixed(2)} 超出视频模型 0.39~2.50，已垫边为 ${padded.width}x${padded.height}：${relativePath}`)
+  return `data:image/jpeg;base64,${padded.buffer.toString('base64')}`
+}
+
+async function padToVideoRefRatio(
+  filePath: string,
+  width: number,
+  height: number,
+  ratio: number,
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  const target = Math.min(VIDEO_REF_MAX_RATIO, Math.max(VIDEO_REF_MIN_RATIO, ratio))
+  const capLongSide = 2048
+  const canvas = ratio > target
+    ? { width: Math.min(width, capLongSide), height: Math.round(Math.min(width, capLongSide) / target) }
+    : { width: Math.round(Math.min(height, capLongSide) * target), height: Math.min(height, capLongSide) }
+
+  const foreground = await sharp(filePath).rotate().resize({
+    width: canvas.width,
+    height: canvas.height,
+    fit: 'inside',
+    withoutEnlargement: true,
+  }).jpeg({ quality: 92 }).toBuffer()
+
+  const background = await sharp(filePath).rotate()
+    .resize(canvas.width, canvas.height, { fit: 'cover' })
+    .blur(28)
+    .modulate({ brightness: 0.82 })
+    .toBuffer()
+
+  const buffer = await sharp(background)
+    .composite([{ input: foreground, gravity: 'centre' }])
+    .jpeg({ quality: 88, mozjpeg: true })
+    .toBuffer()
+  return { buffer, width: canvas.width, height: canvas.height }
+}
+
 export async function readImageAsCompressedDataUrl(
   relativePath: string,
   options: {

@@ -9,7 +9,7 @@ import { getAbsolutePath } from '../utils/storage.js'
 import { downloadVideo, safeTaskError } from './video-download.js'
 import { assertUsableApiKey, getActiveConfig, getConfigById } from './ai.js'
 import { now } from '../utils/response.js'
-import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, saveBase64Image } from '../utils/storage.js'
+import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, readVideoReferenceDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
 import { getImageAdapter, getVideoAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
@@ -768,8 +768,8 @@ async function normalizeVideoReferenceUrl(value: string | null | undefined): Pro
   if (raw.startsWith('static/') || raw.startsWith('/static/')) {
     const localPath = raw.startsWith('/static/') ? raw.slice(1) : raw
     try {
-      // 视频参考图直接编码原文件，保留原始尺寸、格式、透明通道和画质。
-      return readImageAsDataUrl(localPath)
+      // 视频参考图直接编码原文件，保留原始尺寸与画质；宽高比越界时垫边到模型允许区间（见 readVideoReferenceDataUrl）
+      return readVideoReferenceDataUrl(localPath)
     } catch (err) {
       logTaskWarn('VideoTask', 'reference-read-failed', { path: localPath, error: (err as Error).message })
       return null
