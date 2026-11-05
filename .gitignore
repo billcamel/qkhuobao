@@ -61,3 +61,6 @@ desktop/resources/
 
 # 本地补丁备份
 *.bak-*
+
+# 质检报告（运行时产物）
+data/qc/
