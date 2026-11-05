@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { now } from '../utils/response.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
+import { runVideoQc } from './qc.js'
 import { ffmpeg, checkFfmpegSuite } from '../utils/ffmpeg.js'
 import { DATA_ROOT, STORAGE_ROOT } from '../utils/paths.js'
 
@@ -145,6 +146,10 @@ async function doMerge(mergeId: number, episodeId: number, videos: string[]) {
     .where(eq(schema.episodes.id, episodeId))
 
   logTaskSuccess('MergeTask', 'episode-merge', { mergeId, episodeId, output: mergedRelative, duration, clips: videos.length })
+
+  // 成片同样跑一遍质检
+  void runVideoQc({ kind: 'merge', id: mergeId, file: mergedRelative, label: `第 ${episodeId} 集成片` })
+    .catch(err => logTaskError('MergeQC', 'qc-failed', { mergeId, error: (err as Error).message }))
 }
 
 function getVideoDuration(filePath: string): Promise<number> {

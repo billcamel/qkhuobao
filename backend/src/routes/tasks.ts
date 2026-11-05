@@ -158,6 +158,11 @@ app.post('/', async (c) => {
         if (locked != null && configId == null) configId = locked
         if (type === 'video' && ep?.resolution) episodeResolution = ep.resolution
         storyboardDramaId = ep?.dramaId ?? undefined
+        // 未显式指定画幅时按剧集设定补齐，避免参考图（含垫边的超宽拼图）反过来决定输出比例
+        if (type === 'video' && videoBody && !videoBody.aspect_ratio && storyboardDramaId) {
+          const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, storyboardDramaId))
+          if (drama?.aspectRatio) videoBody.aspect_ratio = drama.aspectRatio
+        }
       }
     }
 

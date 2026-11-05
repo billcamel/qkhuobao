@@ -9,6 +9,7 @@ import { getAbsolutePath } from '../utils/storage.js'
 import { downloadVideo, safeTaskError } from './video-download.js'
 import { assertUsableApiKey, getActiveConfig, getConfigById } from './ai.js'
 import { now } from '../utils/response.js'
+import { runVideoQc } from './qc.js'
 import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, readImageAsDataUrl, readVideoReferenceDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
 import { getImageAdapter, getVideoAdapter } from './adapters/registry'
@@ -647,6 +648,13 @@ async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, dura
       tx.update(schema.sysTask).set({ localPath, status: 'completed', stage: 'completed', errorCode: null,
         errorMsg: null, completedAt: now(), updatedAt: now() }).where(eq(schema.sysTask.id, record.id)).run()
     })
+    // 生成后自动质检：不阻塞主流程，失败只记日志（角色音色试听片段跳过）
+    if (params.purpose !== 'voice_clip') {
+      void runVideoQc({
+        kind: 'task', id: record.id, file: localPath,
+        label: record.storyboardId ? `分镜 ${record.storyboardId}` : undefined,
+      }).catch(err => logTaskWarn('VideoQC', 'qc-failed', { id: record.id, error: (err as Error).message }))
+    }
   } catch (error) {
     await failTask(record.id, safeTaskError(error), 'delivery_failed')
   }

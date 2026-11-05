@@ -19,6 +19,7 @@ import stylePresets from './routes/stylePresets.js'
 import prompts from './routes/prompts.js'
 import agent from './routes/agent.js'
 import merge from './routes/merge.js'
+import qc from './routes/qc.js'
 import skills from './routes/skills.js'
 import props from './routes/props.js'
 import settings from './routes/settings.js'
@@ -65,6 +66,7 @@ api.route('/style-presets', stylePresets)
 api.route('/prompts', prompts)
 api.route('/agent', agent)
 api.route('/merge', merge)
+api.route('/qc', qc)
 api.route('/skills', skills)
 api.route('/props', props)
 api.route('/storage', storage)
