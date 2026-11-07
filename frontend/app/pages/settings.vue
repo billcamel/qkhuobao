@@ -497,10 +497,10 @@
           <div class="preset-picker">
             <button
               v-for="preset in presetsByType(cfgForm.service_type)"
-              :key="`${cfgForm.service_type}-${preset.provider}`"
+              :key="`${cfgForm.service_type}-${preset.id}`"
               type="button"
               class="preset-pill"
-              @click="applyProviderPreset(cfgForm.service_type, preset.provider)"
+              @click="applyProviderPreset(cfgForm.service_type, preset.id)"
             >
               {{ preset.label }}
             </button>
@@ -522,7 +522,11 @@
             <input v-model="cfgForm.api_key" class="input" type="password" :placeholder="isVolcengineTts ? t('settings.cfg.volcengineApiKeyPlaceholder') : 'sk-...'" />
             <span v-if="isVolcengineTts" class="field-hint">{{ t('settings.cfg.volcengineApiKeyHint') }}</span>
           </label>
-          <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
+          <label class="field">
+            <span class="field-label">Base URL</span>
+            <input v-model="cfgForm.base_url" class="input" placeholder="https://..." />
+            <span v-if="isVolcengineArk" class="field-hint">{{ t('settings.cfg.arkBaseUrlHint') }}</span>
+          </label>
           <div class="field">
             <span class="field-label">{{ isVolcengineTts ? t('settings.cfg.volcengineResourceId') : t('settings.cfg.models') }}</span>
             <div v-if="cfgForm.models.length" class="model-chips">
@@ -727,6 +731,7 @@ const huobaoSaving = ref(false)
 const huobaoRegion = ref(locale.value?.startsWith('zh') ? 'cn' : 'com')
 const huobaoSiteUrl = computed(() => `https://api.firemux.${huobaoRegion.value}`)
 const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', models: [], service_type: 'text', priority: 0, temperature: '' })
+const isVolcengineArk = computed(() => cfgForm.provider === 'volcengine' && cfgForm.service_type !== 'tts')
 const isVolcengineTts = computed(() => cfgForm.service_type === 'tts' && cfgForm.provider === 'volcengine')
 // 模型标签编辑器：首位即默认模型；输入框支持回车添加、逗号/换行批量粘贴
 const modelInput = ref('')
@@ -768,14 +773,19 @@ const providerPresets = {
   text: {
     gemini: { label: 'Gemini 官方', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview'] },
     openai: { label: 'OpenAI 官方', baseUrl: 'https://api.openai.com', models: ['deepseek-v4-pro', 'gpt-5.6-terra'] },
+    volcengine: { label: '火山方舟 官方', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
+    'volcengine-plan': { provider: 'volcengine', label: '火山方舟 订阅包', baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3', models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
   },
   image: {
     gemini: { label: 'Gemini 官方', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3-pro-image', 'gemini-3.1-flash-image'] },
     openai: { label: 'OpenAI 官方', baseUrl: 'https://api.openai.com', models: ['gpt-image-2'] },
+    volcengine: { label: 'Seedream 官方', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedream-5-0-flash-260915'] },
+    'volcengine-plan': { provider: 'volcengine', label: 'Seedream 订阅包', baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3', models: ['doubao-seedream-5-0-flash-260915'] },
   },
   video: {
     aliyun: { label: '阿里云百炼 Wan 3.0', baseUrl: 'https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com', models: ['wan3.0-video', 'wan3.0-video-prime'] },
     volcengine: { label: 'Seedance 2.0 官方', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128'] },
+    'volcengine-plan': { provider: 'volcengine', label: 'Seedance 订阅包', baseUrl: 'https://ark.cn-beijing.volces.com/api/plan/v3', models: ['doubao-seedance-2-0-mini-260615', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128'] },
     minimax: { label: 'MiniMax H3 官方', baseUrl: 'https://api.minimaxi.com', models: ['MiniMax-H3'] },
   },
   tts: {
@@ -802,12 +812,13 @@ function countActive(t) { return byType(t).filter(c => c.is_active).length }
 function fmtModel(m) { return Array.isArray(m) ? m.join(', ') : m || '—' }
 function presetsByType(type) {
   const group = providerPresets[type] || {}
-  return Object.entries(group).map(([provider, preset]) => ({ provider, ...preset }))
+  // 同一厂商可有多个预设（如火山标准 / 订阅包），键为预设 id，preset.provider 缺省取键名
+  return Object.entries(group).map(([id, preset]) => ({ id, ...preset, provider: preset.provider || id }))
 }
-function applyProviderPreset(type, provider) {
-  const preset = providerPresets[type]?.[provider]
+function applyProviderPreset(type, id) {
+  const preset = providerPresets[type]?.[id]
   if (!preset) return
-  cfgForm.provider = provider
+  cfgForm.provider = preset.provider || id
   cfgForm.base_url = preset.baseUrl
   cfgForm.models = [...preset.models]
   // 配置名持久化进 DB：用 provider 英文 + 服务类型英文标识拼，不随界面语言漂移
@@ -875,7 +886,7 @@ function startAddCfg(t) {
   cfgTestResult.value = null
   Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', models: [], service_type: t, priority: 0, temperature: '' })
   const firstPreset = presetsByType(t)[0]
-  if (firstPreset) applyProviderPreset(t, firstPreset.provider)
+  if (firstPreset) applyProviderPreset(t, firstPreset.id)
   cfgDialog.value = true
 }
 function startEditCfg(c) {

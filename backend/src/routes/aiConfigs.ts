@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, notFound, created, badRequest, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
-import { joinProviderUrl } from '../services/adapters/url.js'
+import { joinArkUrl, joinProviderUrl } from '../services/adapters/url.js'
 import { apiKeyProblem, isOfficialProvider, parseConfigAppId, parseConfigTemperature } from '../services/ai.js'
 import { volcengineResourceId } from '../services/voice/adapters.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
@@ -112,7 +112,7 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
         : '/images/generations'
     return {
       method: 'POST',
-      url: joinProviderUrl(baseUrl, '/api/v3', path),
+      url: joinArkUrl(baseUrl, path),
       headers: bearerHeaders(apiKey, true),
       body: {},
     }

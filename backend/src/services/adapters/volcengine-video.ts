@@ -1,6 +1,6 @@
 /**
  * 火山引擎 Seedance 2.0 视频生成 Adapter
- * 端点: /api/v3/contents/generations/tasks (注意 /api/v3 前缀)
+ * 端点: /api/v3/contents/generations/tasks (注意 /api/v3 前缀；订阅包为 /api/plan/v3，见 joinArkUrl)
  * 响应: { id: "task-xxx" } -> 轮询获取状态
  *
  * 仅支持 Doubao Seedance 2.0+ 系列模型，生成模式只保留多模态参考:
@@ -15,7 +15,7 @@ import type {
   VideoGenResponse,
   VideoPollResponse,
 } from './types'
-import { joinProviderUrl } from './url'
+import { joinArkUrl } from './url'
 import { logTaskWarn } from '../../utils/task-logger.js'
 
 /** 仅支持 Seedance 2.0+ 系列（前缀匹配，兼容未来 2.0.x 变体） */
@@ -89,7 +89,7 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
     }
 
     return {
-      url: joinProviderUrl(config.baseUrl, '/api/v3', '/contents/generations/tasks'),
+      url: joinArkUrl(config.baseUrl, '/contents/generations/tasks'),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +113,7 @@ export class VolcEngineVideoAdapter implements VideoProviderAdapter {
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest {
     return {
-      url: joinProviderUrl(config.baseUrl, '/api/v3', `/contents/generations/tasks/${taskId}`),
+      url: joinArkUrl(config.baseUrl, `/contents/generations/tasks/${taskId}`),
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,

@@ -48,7 +48,7 @@ configs/   — 遗留死配置，代码零引用
 - **Agent 任务**: 改写/提取/故事板/视频提示词走 `services/agent-tasks.ts`（agent_tasks 表，异步 + 前端轮询，重启标记 interrupted）；以是否实际调用保存工具判定成败，产出经规则校验后 warnings 写入任务结果
 - **故事板**: 层级 剧本场景（episode_script_scenes）→ 段（= storyboards 一行 = 一次视频生成，5-15 秒、≤4 格）→ 镜（切镜）→ 拍（1A/1B，一拍一格）。`storyboards.board` JSON 是唯一事实来源，description / video_prompt 由 `services/board.ts` 确定性推导；出图提示词由 `services/board-image.ts` 按模板拼装，每次出图一个版本（storyboard_board_versions），审核状态 draft/pending/approved/rejected；审核通过时自动生成「净版关键帧图」（去掉文字/箭头，版本表 clean_image_url），视频生成 `auto_references` 时用它作第 1 张参考图（episodes.board_reference）——实测带标注的故事板会把箭头画进视频，故不直接用故事板图。视频请求组装在 `services/video-request.ts`（生成任务与 `GET /storyboards/:id/video-preview` 共用）：只有审核通过且净版就绪才挂故事板参考，提示词含格序对照与开场/结尾画面，时长以故事板为准；故事板段的「重新生成提示词」从故事板确定性重推导，不经大模型。写实风格的净版关键帧常被 Seedance 真人隐私审核拒绝（InputImageSensitiveContentDetected.PrivacyInformation）：`generation.ts` 自动去掉故事板参考重提（原任务 error_code=board_reference_fallback，前端显示「已重提」不计失败），并在 `dramas.board_ref_blocked_style` 记下当前风格；之后同风格下含人物的段直接不挂关键帧（状态 blocked），空镜段照挂，换风格自动失效
 - **分镜快照**: 整集重新生成故事板/恢复前自动留存（storyboard_snapshots，含剧本场景分组），可按原 ID 恢复
-- **媒体生成**: `services/generation.ts` 统一任务生命周期（sys_task 表），适配器模式：图片 openai/gemini/volcengine（Seedream 支持 size + 多参考图），视频 volcengine/minimax/aliyun
+- **媒体生成**: `services/generation.ts` 统一任务生命周期（sys_task 表），适配器模式（火山方舟端点由 `joinArkUrl` 解析：Base URL 为标准域名补 /api/v3，已带 /api/plan/v3（Agent Plan）、/api/coding/v3 等订阅包前缀则原样保留，误填完整接口路径会自动剥掉）：图片 openai/gemini/volcengine（Seedream 支持 size + 多参考图），视频 volcengine/minimax/aliyun
 - **视频拼接**: `services/ffmpeg-merge.ts`，FFmpeg 二进制内置（ffmpeg-static），可用 `FFMPEG_BIN`/`FFPROBE_BIN` 覆盖
 
 ### Frontend

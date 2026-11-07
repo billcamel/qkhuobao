@@ -1,6 +1,6 @@
 /**
  * 火山引擎 veImageX 图片生成 Adapter
- * 端点: /api/v3/images/generations (注意 /api/v3 前缀)
+ * 端点: /api/v3/images/generations (注意 /api/v3 前缀；订阅包为 /api/plan/v3，见 joinArkUrl)
  * 响应格式: { data: [{ url: "..." }] }
  * 参考图：record.referenceImages（data URL 数组 JSON）→ 官方 image 字段
  */
@@ -12,7 +12,7 @@ import type {
   ImageGenResponse,
   ImagePollResponse,
 } from './types'
-import { joinProviderUrl } from './url'
+import { joinArkUrl } from './url'
 
 /** 解析任务里存的参考图 JSON 数组；非法内容一律视为空 */
 function parseReferenceImages(raw?: string | null): string[] {
@@ -55,7 +55,7 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
     // 不传 watermark=false：保留 Ark 默认的「AI生成」角标（《AI生成合成内容标识办法》合规要求，见 docs/local-setup-notes.md）
 
     return {
-      url: joinProviderUrl(config.baseUrl, '/api/v3', '/images/generations'),
+      url: joinArkUrl(config.baseUrl, '/images/generations'),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ export class VolcEngineImageAdapter implements ImageProviderAdapter {
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest {
     return {
-      url: joinProviderUrl(config.baseUrl, '/api/v3', `/images/generations/${taskId}`),
+      url: joinArkUrl(config.baseUrl, `/images/generations/${taskId}`),
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,

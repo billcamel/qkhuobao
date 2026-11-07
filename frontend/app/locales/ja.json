@@ -417,7 +417,8 @@
       "volcengineApiKeyPlaceholder": "コンソール API Key",
       "volcengineApiKeyHint": "火山エンジンコンソールの「API Key 管理」で発行したキーを入力します。リクエストヘッダーは X-Api-Key です。App ID と Access Token は不要です。",
       "volcengineResourceId": "リソース ID（X-Api-Resource-Id）",
-      "volcengineResourceHint": "モデル名が X-Api-Resource-Id になり、課金商品も決まります。組み込み moon 音色は seed-tts-1.0、2.0 音色は seed-tts-2.0、音声クローンは seed-icl-1.0 または seed-icl-2.0。保存済みの volcano_tts は seed-tts-1.0 として呼び出します。"
+      "volcengineResourceHint": "モデル名が X-Api-Resource-Id になり、課金商品も決まります。組み込み moon 音色は seed-tts-1.0、2.0 音色は seed-tts-2.0、音声クローンは seed-icl-1.0 または seed-icl-2.0。保存済みの volcano_tts は seed-tts-1.0 として呼び出します。",
+      "arkBaseUrlHint": "従量課金は https://ark.cn-beijing.volces.com。サブスクリプション（Agent Plan など）は https://ark.cn-beijing.volces.com/api/plan/v3 のような専用アドレスと専用 API キーを使用してください（そうしないとプラン枠は消費されません）"
     },
     "styleDialog": {
       "editTitle": "スタイルプリセットを編集",

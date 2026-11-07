@@ -417,7 +417,8 @@
       "volcengineApiKeyPlaceholder": "Console API Key",
       "volcengineApiKeyHint": "Paste the key from Volcengine console API Key management. It is sent as X-Api-Key. App ID and access tokens are no longer required.",
       "volcengineResourceId": "Resource ID (X-Api-Resource-Id)",
-      "volcengineResourceHint": "The model name is the X-Api-Resource-Id header and also selects the billing product. Built-in moon voices use seed-tts-1.0; 2.0 voices use seed-tts-2.0; voice clone uses seed-icl-1.0 or seed-icl-2.0. A saved volcano_tts value is called as seed-tts-1.0."
+      "volcengineResourceHint": "The model name is the X-Api-Resource-Id header and also selects the billing product. Built-in moon voices use seed-tts-1.0; 2.0 voices use seed-tts-2.0; voice clone uses seed-icl-1.0 or seed-icl-2.0. A saved volcano_tts value is called as seed-tts-1.0.",
+      "arkBaseUrlHint": "Pay-as-you-go: https://ark.cn-beijing.volces.com. For a subscription plan (e.g. Agent Plan) use the plan's own endpoint such as https://ark.cn-beijing.volces.com/api/plan/v3 with the plan's own API key, otherwise the plan quota is not used"
     },
     "styleDialog": {
       "editTitle": "Edit Style Preset",

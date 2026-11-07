@@ -4,7 +4,7 @@
 import { db, schema } from '../db/index.js'
 import { eq } from 'drizzle-orm'
 import { logTaskProgress, logTaskWarn } from '../utils/task-logger.js'
-import { joinProviderUrl } from './adapters/url.js'
+import { joinArkUrl, joinProviderUrl } from './adapters/url.js'
 
 export type ServiceType = 'text' | 'image' | 'video' | 'tts'
 
@@ -82,7 +82,7 @@ export function getTextProviderBaseUrl(config: AIConfig) {
   }
 
   if (provider === 'volcengine') {
-    return joinProviderUrl(config.baseUrl, '/api/v3', '')
+    return joinArkUrl(config.baseUrl, '')
   }
 
   return config.baseUrl
